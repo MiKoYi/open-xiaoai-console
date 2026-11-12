@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPO_TARBALL_PATH = "https://codeload.github.com/idootop/open-xiaoai/tar.gz/refs/heads/main"
+MIGPT_LEAN_DOCKERFILE = REPO_ROOT / "examples" / "migpt" / "Dockerfile.lean"
 DEFAULT_PORT = 4399
 CONTAINER_PREFIX = "open-xiaoai"
 
@@ -421,6 +422,7 @@ def docker_run_args(
     host_port: int = DEFAULT_PORT,
     memory: str = "",
     image: str = "",
+    source_build: bool = False,
 ) -> list[str]:
     spec = get_mode(mode_key)
     if not spec.deployable:
@@ -440,6 +442,10 @@ def docker_run_args(
     ]
     if memory:
         args += ["--memory", memory, "--memory-swap", _memory_swap(memory)]
+    if source_build and mode_key == "migpt":
+        heap = _node_heap_mb(memory)
+        if heap:
+            args += ["-e", f"NODE_OPTIONS=--max-old-space-size={heap} --max-semi-space-size=8"]
     args.append(image or spec.image)
     return args
 
@@ -464,6 +470,21 @@ def _memory_swap(memory: str) -> str:
     return f"{amount}{unit}"
 
 
+def _memory_mb(memory: str) -> int | None:
+    match = re.fullmatch(r"(\d+)([mMgG])", (memory or "").strip())
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if match.group(2).lower() == "m" else value * 1024
+
+
+def _node_heap_mb(memory: str) -> int | None:
+    limit = _memory_mb(memory)
+    if not limit:
+        return None
+    return max(64, min(384, limit // 2))
+
+
 def source_image_tag(mode_key: str) -> str:
     return f"open-xiaoai-{mode_key}:local"
 
@@ -472,9 +493,22 @@ def source_repo_dir(base_dir: Path | str) -> Path:
     return Path(base_dir) / "source" / "open-xiaoai"
 
 
+def _prepare_source_tree(mode_key: str, repo_dir: Path | str) -> None:
+    """把仓库里的精简 Dockerfile 放进下载的源码目录。"""
+    if mode_key != "migpt" or not MIGPT_LEAN_DOCKERFILE.is_file():
+        return
+    target = Path(repo_dir) / "examples" / "migpt" / "Dockerfile.lean"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(MIGPT_LEAN_DOCKERFILE.read_bytes())
+
+
 def docker_build_args(mode_key: str, repo_dir: Path | str) -> list[str]:
     repo = Path(repo_dir)
     dockerfile = repo / "examples" / mode_key / "Dockerfile"
+    if mode_key == "migpt":
+        lean = repo / "examples" / "migpt" / "Dockerfile.lean"
+        if lean.is_file():
+            dockerfile = lean
     return ["build", "-f", str(dockerfile), "-t", source_image_tag(mode_key), str(repo)]
 
 
@@ -696,6 +730,7 @@ def build_local_image(
 ) -> str:
     """本机准备源码并构建镜像，返回本地镜像 tag。"""
     repo = fetch_source_bundle(base_dir, mirror, custom_prefix, notify)
+    _prepare_source_tree(mode_key, repo)
 
     _log(notify, "开始构建镜像，首次构建可能需要几分钟（ARM / 小内存机器会更久）…", "warn")
     code, _ = _stream(["docker", *docker_build_args(mode_key, repo)], notify)
@@ -784,9 +819,20 @@ def deploy_local(
 
     _status(notify, "正在启动容器…")
     _stream(["docker", "rm", "-f", container_name(mode_key)], notify)
-    run_args = docker_run_args(mode_key, config_path, port, memory=memory, image=image)
+    run_args = docker_run_args(
+        mode_key,
+        config_path,
+        port,
+        memory=memory,
+        image=image,
+        source_build=(method == "source"),
+    )
     if memory:
         _log(notify, f"容器内存上限：{memory}（swap 上限 {_memory_swap(memory)}）")
+        if method == "source" and mode_key == "migpt":
+            heap = _node_heap_mb(memory)
+            if heap:
+                _log(notify, f"Node 堆上限：{heap} MB（约为容器内存的一半）")
     code, output = _stream(["docker", *run_args], notify)
     if code != 0:
         if "port is already allocated" in output:
@@ -914,6 +960,7 @@ def build_remote_image(
     notify: Notify = None,
 ) -> str:
     """把本机源码打包上传到服务器，再在服务器上构建；服务器不需要 git，也不用访问 GitHub。"""
+    _prepare_source_tree(mode_key, local_repo)
     archive = create_source_archive(local_repo)
     size_mb = archive.stat().st_size / (1024 ** 2)
     remote_root = f"{ssh.home}/open-xiaoai"
@@ -949,10 +996,13 @@ def build_remote_image(
         raise DeployError(f"服务器解压源码失败：{detail}")
 
     tag = source_image_tag(mode_key)
+    dockerfile_name = "Dockerfile"
+    if mode_key == "migpt" and (Path(local_repo) / "examples" / "migpt" / "Dockerfile.lean").is_file():
+        dockerfile_name = "Dockerfile.lean"
     _log(notify, "开始在服务器上构建镜像，首次可能需要几分钟（ARM / 小内存机器会更久）…", "warn")
     code, _ = _ssh_run(
         client,
-        f"docker build -f {remote_src}/examples/{mode_key}/Dockerfile -t {tag} {remote_src}",
+        f"docker build -f {remote_src}/examples/{mode_key}/{dockerfile_name} -t {tag} {remote_src}",
         notify,
     )
     if code != 0:
@@ -1059,6 +1109,11 @@ def deploy_remote(
         if memory:
             run_parts.append(f"--memory {memory} --memory-swap {_memory_swap(memory)}")
             _log(notify, f"容器内存上限：{memory}（swap 上限 {_memory_swap(memory)}）")
+        if method == "source" and mode_key == "migpt":
+            heap = _node_heap_mb(memory)
+            if heap:
+                run_parts.append(f'-e "NODE_OPTIONS=--max-old-space-size={heap} --max-semi-space-size=8"')
+                _log(notify, f"Node 堆上限：{heap} MB（约为容器内存的一半）")
         run_parts.append(f"-v {remote_path}:/app/{spec.config_name} {image}")
         run = " ".join(run_parts)
         code, output = _ssh_run(client, run, notify)

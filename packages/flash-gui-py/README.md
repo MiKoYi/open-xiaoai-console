@@ -60,6 +60,7 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 - 表单化配置：唤醒词、OTA/WebSocket 地址、API Key、模型、系统提示词
 - 部署到本机 Docker 或远程服务器（SSH，密码/私钥）
 - 源码构建：本机下载源码 → 打包上传 → 服务器解压构建（ARM / 小内存）
+- MiGPT 源码构建使用 `examples/migpt/Dockerfile.lean` 精简镜像；容器内存按「内存上限」设置，Node 堆自动设为约一半（256m → 128m）
 - 源码下载源：自动 / 直连 / ghfast.top / ghproxy.net / hub.gitmirror.com / 自定义
 - 容器内存上限、端口映射
 
@@ -107,7 +108,7 @@ python web_app.py --selftest
 python -m unittest discover -s tests -v
 ```
 
-当前 67 项测试：刷机核心 22 项 + 部署核心 31 项 + 状态检测 3 项 + Web 接口 6 项 + 内置工具解压 5 项，不需要 Docker、音箱或浏览器。
+当前 69 项测试：刷机核心 22 项 + 部署核心 33 项 + 状态检测 3 项 + Web 接口 6 项 + 内置工具解压 5 项，不需要 Docker、音箱或浏览器。
 
 ## 安全说明
 

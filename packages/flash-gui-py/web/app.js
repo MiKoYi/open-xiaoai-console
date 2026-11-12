@@ -327,6 +327,12 @@ function renderOptions() {
     });
     methodBox.appendChild(button);
   });
+  const methodHint = $("#method-hint");
+  if (methodHint) {
+    methodHint.textContent = S.method === "source"
+      ? "源码构建使用精简 Dockerfile；容器内存按「内存上限」设置，Node 堆自动设为约一半。"
+      : "官方镜像体积较大，内存受限时建议改用源码构建。";
+  }
 
   const mirror = $("#mirror");
   mirror.innerHTML = "";

@@ -156,6 +156,23 @@ class MemoryAndBuildTests(unittest.TestCase):
         self.assertIn("--memory-swap", args)
         self.assertIn("1024m", args)
 
+    def test_source_run_args_limits_node_heap(self) -> None:
+        args = dcore.docker_run_args(
+            "migpt", "/tmp/config.ts", 4399, memory="256m", source_build=True
+        )
+        self.assertIn("--memory", args)
+        self.assertIn("256m", args)
+        self.assertIn("NODE_OPTIONS=--max-old-space-size=128 --max-semi-space-size=8", args)
+
+    def test_lean_dockerfile_preferred(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            lean = repo / "examples" / "migpt" / "Dockerfile.lean"
+            lean.parent.mkdir(parents=True)
+            lean.write_text("FROM node:22-slim", encoding="utf-8")
+            args = dcore.docker_build_args("migpt", repo)
+            self.assertTrue(str(args[2]).replace("\\", "/").endswith("examples/migpt/Dockerfile.lean"))
+
     def test_source_image_tag(self) -> None:
         self.assertEqual(dcore.source_image_tag("migpt"), "open-xiaoai-migpt:local")
 
