@@ -55,9 +55,11 @@
 | 目录 | 说明 |
 |---|---|
 | `packages/flash-gui-py/` | 图形控制台（本分支主要新增内容） |
-| `packages/client-rust/`、`packages/client-patch/`、`packages/runtime/` | 音箱端 Client（上游） |
-| `examples/` | 上游接入示例：小智 AI、MiGPT、Gemini、KWS、立体声 |
-| `docs/` | 上游刷机与使用文档 |
+| `examples/` | 部署模板和 Dockerfile，**部署页依赖，勿删** |
+| `packages/client-rust/` | 音箱端 Client，部署构建会 `COPY` 它，**勿删** |
+| `packages/client-patch/`、`packages/runtime/` | 固件构建与运行环境（上游） |
+| `packages/flash-tool/` | macOS 刷机工具（Windows 控制台用不到） |
+| `docs/` | 刷机与使用文档 |
 
 ## 风险与免责声明
 
