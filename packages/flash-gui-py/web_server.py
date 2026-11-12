@@ -406,6 +406,8 @@ def make_handler(hub: Hub):
                 self._serve_file("style.css", "text/css; charset=utf-8")
             elif path == "/app.js":
                 self._serve_file("app.js", "application/javascript; charset=utf-8")
+            elif path == "/icon.ico":
+                self._serve_file("icon.ico", "image/x-icon")
             elif path == "/api/bootstrap":
                 self._send_json(bootstrap_payload(hub))
             elif path == "/api/status":

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Open-XiaoAI 控制台 - 初始化</title>
+<link rel="icon" href="/icon.ico">
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/setup.css">
 </head>
@@ -67,6 +68,11 @@
     <button class="btn" id="btn-refresh">重新检测</button>
     <button class="btn" id="btn-exit">退出</button>
     <button class="btn primary" id="btn-launch" disabled>启动控制台</button>
+  </div>
+
+  <div class="launch-overlay hidden" id="launch-overlay">
+    <div class="spinner"></div>
+    <p>正在启动控制台…</p>
   </div>
 </div>
 <script src="/app.js"></script>

@@ -33,6 +33,7 @@ $script:DownloadProc = $null
 $script:DownloadError = ''
 $script:PipProc = $null
 $script:Task = ''
+$script:SetupBrowser = $null
 $script:Shutdown = $false
 
 # ---------------- 检测 ----------------
@@ -448,6 +449,19 @@ function Send-File($response, [string]$path, [string]$contentType) {
     Send-Bytes $response ([System.IO.File]::ReadAllBytes($path)) $contentType
 }
 
+function Close-SetupBrowser {
+    if ($script:SetupBrowser -and -not $script:SetupBrowser.HasExited) {
+        try {
+            & taskkill.exe /PID $script:SetupBrowser.Id /T /F 2>$null | Out-Null
+        } catch { }
+    }
+    try {
+        Get-CimInstance Win32_Process -Filter "Name='msedge.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine -like '*edge-setup-profile*' } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    } catch { }
+}
+
 function Handle-Request($context) {
     $request = $context.Request
     $response = $context.Response
@@ -458,6 +472,7 @@ function Handle-Request($context) {
         '/setup.css' { Send-File $response (Join-Path $script:SetupDir 'setup.css') 'text/css; charset=utf-8' }
         '/app.js' { Send-File $response (Join-Path $script:SetupDir 'app.js') 'application/javascript; charset=utf-8' }
         '/style.css' { Send-File $response (Join-Path $script:WebDir 'style.css') 'text/css; charset=utf-8' }
+        '/icon.ico' { Send-File $response (Join-Path $script:WebDir 'icon.ico') 'image/x-icon' }
         '/api/status' { Send-Json $response (Get-Status) }
         '/api/refresh' { Refresh-State; Send-Json $response (Get-Status) }
         '/api/log' { Send-Json $response @{ text = (Get-LogTail) } }
@@ -479,10 +494,15 @@ function Handle-Request($context) {
         '/api/launch' {
             $result = Start-App
             Send-Json $response $result
-            if ($result.ok) { $script:Shutdown = $true }
+            if ($result.ok) {
+                Start-Sleep -Milliseconds 700
+                $script:Shutdown = $true
+                Close-SetupBrowser
+            }
         }
         '/api/quit' {
             Send-Json $response @{ ok = $true }
+            Close-SetupBrowser
             $script:Shutdown = $true
         }
         default {
@@ -536,7 +556,10 @@ $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 Write-Host "初始化页面：$url"
 if (-not $ServeOnly) {
     if (Test-Path -LiteralPath $edge) {
-        Start-Process -FilePath $edge -ArgumentList "--app=$url", '--window-size=900,700'
+        $profile = Join-Path $script:LogDir 'edge-setup-profile'
+        New-Item -ItemType Directory -Force -Path $profile | Out-Null
+        $script:SetupBrowser = Start-Process -FilePath $edge `
+            -ArgumentList "--app=$url", '--window-size=900,700', "--user-data-dir=$profile" -PassThru
     } else {
         Start-Process $url
     }

@@ -158,11 +158,32 @@ $("#btn-exit").addEventListener("click", async () => {
   $("#setup-status").textContent = "已退出，可以关闭这个页面。";
 });
 $("#btn-launch").addEventListener("click", async () => {
-  const result = await action("/api/launch");
-  if (result.ok) {
+  if (launched) return;
+  $("#launch-overlay").classList.remove("hidden");
+  $("#setup-status").textContent = "正在启动控制台…";
+
+  try {
+    const result = await api("/api/launch", {});
+    if (!result.ok) {
+      $("#launch-overlay").classList.add("hidden");
+      alert(result.message || "启动失败");
+      return;
+    }
     launched = true;
-    $("#setup-status").textContent = "控制台已启动，可以关闭这个页面。";
-    $("#btn-launch").disabled = true;
+    $("#setup-status").textContent = "控制台已启动，正在关闭…";
+    setTimeout(() => {
+      try {
+        window.close();
+      } catch (_) {
+        /* 浏览器可能不允许关闭，服务端会兜底 */
+      }
+    }, 300);
+    setTimeout(() => {
+      $("#setup-status").textContent = "控制台已启动，可以手动关闭此页面。";
+    }, 1800);
+  } catch (error) {
+    $("#launch-overlay").classList.add("hidden");
+    alert("启动失败：" + error);
   }
 });
 
