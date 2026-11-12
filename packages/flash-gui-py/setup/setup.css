@@ -3,7 +3,7 @@
   justify-content: center;
   align-items: flex-start;
   min-height: 100vh;
-  padding: 36px 20px;
+  padding: 28px 20px;
   background: #f5f6f8;
 }
 
@@ -12,17 +12,17 @@
   max-width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .setup-head h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 700;
 }
 
 .setup-head p {
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: 13px;
 }
@@ -32,13 +32,13 @@
   font-size: 12px !important;
 }
 
-.setup-card { padding: 8px 18px; }
+.setup-card { padding: 6px 18px; }
 
 .setup-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 15px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 .setup-row:last-child { border-bottom: 0; }
@@ -60,7 +60,7 @@
 .setup-inline { display: flex; gap: 8px; flex: 0 0 auto; }
 
 .setup-log {
-  height: 190px;
+  height: 150px;
   flex: none;
   margin: 4px 0 10px;
 }

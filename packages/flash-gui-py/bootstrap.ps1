@@ -536,7 +536,7 @@ $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 Write-Host "初始化页面：$url"
 if (-not $ServeOnly) {
     if (Test-Path -LiteralPath $edge) {
-        Start-Process -FilePath $edge -ArgumentList "--app=$url", '--window-size=920,860'
+        Start-Process -FilePath $edge -ArgumentList "--app=$url", '--window-size=900,700'
     } else {
         Start-Process $url
     }
