@@ -27,6 +27,11 @@
   font-size: 13px;
 }
 
+.setup-warn {
+  color: #b45309 !important;
+  font-size: 12px !important;
+}
+
 .setup-card { padding: 8px 18px; }
 
 .setup-row {
