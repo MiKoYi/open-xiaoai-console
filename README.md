@@ -58,7 +58,6 @@
 | `examples/` | 部署模板和 Dockerfile，**部署页依赖，勿删** |
 | `packages/client-rust/` | 音箱端 Client，部署构建会 `COPY` 它，**勿删** |
 | `packages/client-patch/`、`packages/runtime/` | 固件构建与运行环境（上游） |
-| `packages/flash-tool/` | macOS 刷机工具（Windows 控制台用不到） |
 | `docs/` | 刷机与使用文档 |
 
 ## 风险与免责声明

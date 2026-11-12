@@ -37,9 +37,6 @@
 
 把下载好的刷机工具文件夹解压到桌面，重命名为 `Amlogic_Flash_Tool_v6.0.0`
 
-> [!TIP]
-> 如果你是 macOS 系统，请到此处下载[刷机工具和使用教程](../packages/flash-tool/README.md)。
-
 ![](./images/driver.jpg)
 
 然后运行 `AMLLogic driver installer.exe` 文件，按照提示安装 USB 驱动。
