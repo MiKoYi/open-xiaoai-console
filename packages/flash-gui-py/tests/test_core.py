@@ -116,6 +116,30 @@ class FakeToolCase(unittest.TestCase):
         make_image(plain)
         self.assertFalse(core.test_firmware(str(plain), "LX06").ok)
 
+    def test_firmware_candidates_auto_prefers_mirrors(self) -> None:
+        info = core.get_model_info("LX06")
+        candidates = core.firmware_candidates(info, "auto")
+        self.assertGreaterEqual(len(candidates), 2)
+        self.assertTrue(candidates[0][1].startswith("https://ghproxy.net/"))
+        self.assertEqual(candidates[-1], ("GitHub 直连", info.url))
+
+    def test_firmware_candidates_direct(self) -> None:
+        info = core.get_model_info("OH2P")
+        self.assertEqual(core.firmware_candidates(info, "github"), [("GitHub 直连", info.url)])
+
+    def test_firmware_candidates_custom_requires_prefix(self) -> None:
+        info = core.get_model_info("LX06")
+        with self.assertRaises(core.FlashError):
+            core.firmware_candidates(info, "custom", "")
+        candidates = core.firmware_candidates(info, "custom", "https://example.com/")
+        self.assertEqual(candidates[0][1], "https://example.com/" + info.url)
+
+    def test_firmware_candidates_official(self) -> None:
+        info = core.get_model_info("LX06")
+        candidates = core.firmware_candidates(info, "auto", kind="official")
+        self.assertIn(info.official_filename, candidates[0][1])
+        self.assertEqual(candidates[-1], ("GitHub 直连", info.official_url))
+
     # ---------------- 2. 设备识别 ----------------
 
     def test_wait_for_device_retries(self) -> None:

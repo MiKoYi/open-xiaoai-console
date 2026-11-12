@@ -3,7 +3,6 @@
 根据仓库 examples/ 下的文档，把「大模型接入方式」抽象成可部署的模式：
 - 小智 AI：官方 Docker 镜像 + config.py
 - MiGPT：官方 Docker 镜像 + config.ts
-- Gemini Live：源码运行（暂不提供一键部署，仅展示步骤）
 
 支持部署到本机 Docker 或远程服务器（SSH）。
 """
@@ -105,6 +104,7 @@ class Field:
     multiline: bool = False
     help: str = ""
     placeholder: str = ""
+    options: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -150,7 +150,6 @@ XIAOZHI = ModeSpec(
             label="WebSocket 地址",
             default="wss://api.tenclass.net/xiaozhi/v1/",
             required=True,
-            help="使用官方小智服务时保持默认；自建服务改成自己的地址。",
         ),
     ),
     note="部署后首次对话需要在 xiaozhi.me 绑定设备，验证码会显示在容器日志里。",
@@ -168,11 +167,40 @@ MIGPT = ModeSpec(
         Field(key="api_key", label="API Key", required=True, secret=True, placeholder="sk-..."),
         Field(
             key="base_url",
-            label="接口地址（以 /v1 结尾，不要带 /chat/completions）",
+            label="接口地址（OpenAI 兼容地址，通常以 /v1 结尾）",
             default="https://api.openai.com/v1",
             required=True,
+            options=(
+                "https://api.openai.com/v1",
+                "https://api.deepseek.com",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "https://api.moonshot.cn/v1",
+                "https://open.bigmodel.cn/api/paas/v4",
+                "https://api.siliconflow.cn/v1",
+                "https://ark.cn-beijing.volces.com/api/v3",
+            ),
         ),
-        Field(key="model", label="模型名称", default="gpt-4.1-mini", required=True),
+        Field(
+            key="model",
+            label="模型名称",
+            default="gpt-4.1-mini",
+            required=True,
+            options=(
+                "gpt-4.1-mini",
+                "gpt-4.1",
+                "gpt-4o-mini",
+                "gpt-4o",
+                "deepseek-flash",
+                "deepseek-v4-pro",
+                "qwen-plus",
+                "qwen-max",
+                "qwen-turbo",
+                "moonshot-v1-8k",
+                "moonshot-v1-32k",
+                "glm-4-plus",
+                "glm-4-flash",
+            ),
+        ),
         Field(
             key="system_prompt",
             label="系统提示词",
@@ -183,19 +211,7 @@ MIGPT = ModeSpec(
     note="支持 DeepSeek、通义、Moonshot 等任何兼容 OpenAI 接口的服务，改接口地址和模型名即可。",
 )
 
-GEMINI = ModeSpec(
-    key="gemini",
-    title="Gemini Live",
-    tagline="Google Gemini Live API",
-    kind="source",
-    doc="examples/gemini/README.md",
-    fields=(
-        Field(key="api_key", label="GEMINI_API_KEY", required=True, secret=True),
-    ),
-    note="该项目没有官方 Docker 镜像，需要在服务器上克隆仓库后用 uv 运行，暂未提供一键部署。",
-)
-
-MODES: dict[str, ModeSpec] = {spec.key: spec for spec in (XIAOZHI, MIGPT, GEMINI)}
+MODES: dict[str, ModeSpec] = {spec.key: spec for spec in (XIAOZHI, MIGPT)}
 
 
 def get_mode(key: str) -> ModeSpec:
@@ -245,7 +261,7 @@ def _read_title_and_summary(readme: Path) -> tuple[str, str]:
 def discover_examples(repo_root: Path | str = REPO_ROOT) -> list[ExampleEntry]:
     """按 examples/ 下的 README 生成可选列表（顺序固定，便于界面展示）。"""
     root = Path(repo_root) / "examples"
-    order = ["xiaozhi", "migpt", "gemini", "kws", "stereo"]
+    order = ["xiaozhi", "migpt", "kws", "stereo"]
     found: dict[str, ExampleEntry] = {}
 
     if root.is_dir():
@@ -371,11 +387,6 @@ export const kOpenXiaoAIConfig: OpenXiaoAIConfig = {{
     }}
   }},
 }};
-'''
-
-    if spec.key == "gemini":
-        return f'''# Gemini Live 采用官方示例源码运行，API Key 通过环境变量传入：
-# export GEMINI_API_KEY={values.get("api_key", "")}
 '''
 
     raise DeployError(f"暂不支持生成 {spec.title} 的配置")

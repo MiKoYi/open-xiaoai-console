@@ -21,8 +21,15 @@ from urllib.request import Request, urlopen
 
 IMAGE_MAX_SIZE = 0x02800000  # 40MB，system 分区上限（见 packages/client-patch/src/squashfs.sh）
 TUTORIAL_URL = "https://github.com/idootop/open-xiaoai/blob/main/docs/flash.md"
-TOOL_URL = "https://androidmtk.com/download-amlogic-flash-tool"
+TOOL_URL = "https://www.mediafire.com/file/1m9x18q1klcj5ds/Amlogic_Flash_Tool_v6.0.0.zip/file"
 RELEASE_BASE = "https://github.com/idootop/open-xiaoai/releases/download"
+
+# 固件下载加速源；auto 会按这个顺序尝试，最后再回退直连 GitHub
+FIRMWARE_MIRRORS = (
+    ("ghproxy.net", "https://ghproxy.net/"),
+    ("gh-proxy.com", "https://gh-proxy.com/"),
+    ("ghfast.top", "https://ghfast.top/"),
+)
 
 
 class FlashError(Exception):
@@ -42,6 +49,14 @@ class ModelInfo:
     @property
     def release_page(self) -> str:
         return f"https://github.com/idootop/open-xiaoai/releases/tag/{self.model}_{self.version}"
+
+    @property
+    def official_filename(self) -> str:
+        return f"{self.model}_{self.version}.squashfs"
+
+    @property
+    def official_url(self) -> str:
+        return f"{RELEASE_BASE}/{self.model}_{self.version}/{self.official_filename}"
 
 
 MODELS = {
@@ -73,6 +88,41 @@ def get_model_info(model: str) -> ModelInfo:
         return MODELS[model]
     except KeyError as exc:
         raise FlashError(f"不支持的机型：{model}（仅支持 LX06 / OH2P）") from exc
+
+
+def firmware_candidates(
+    info: ModelInfo, mirror: str = "auto", custom_prefix: str = "", kind: str = "patched"
+) -> list[tuple[str, str]]:
+    """返回固件下载候选 [(显示名, URL), ...]。
+
+    kind = patched（补丁固件）或 official（官方原版固件）。
+    mirror 与部署页的下载源设置保持一致：auto / github / ghfast / ghproxy /
+    gitmirror / custom。auto 优先走国内加速源，最后回退 GitHub 直连。
+    """
+    source_url = info.official_url if kind == "official" else info.url
+    direct = ("GitHub 直连", source_url)
+
+    if mirror == "custom":
+        prefix = (custom_prefix or "").strip()
+        if not prefix:
+            raise FlashError("请先填写自定义加速前缀，例如 https://ghproxy.net/")
+        if not prefix.endswith("/"):
+            prefix += "/"
+        return [("自定义源", prefix + source_url), direct]
+
+    if mirror in ("github", "direct"):
+        return [direct]
+
+    presets = {
+        "ghfast": ("ghfast.top", "https://ghfast.top/"),
+        "ghproxy": ("ghproxy.net", "https://ghproxy.net/"),
+        "gitmirror": ("hub.gitmirror.com", "https://hub.gitmirror.com/"),
+    }
+    if mirror in presets:
+        label, prefix = presets[mirror]
+        return [(label, prefix + source_url), direct]
+
+    return [(label, prefix + source_url) for label, prefix in FIRMWARE_MIRRORS] + [direct]
 
 
 # ---------------- 通知 ----------------
@@ -326,51 +376,89 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def download_firmware(dest_dir: str | Path, model: str = "LX06", notify: Notify = None) -> Path:
+def download_firmware(
+    dest_dir: str | Path,
+    model: str = "LX06",
+    notify: Notify = None,
+    mirror: str = "auto",
+    custom_prefix: str = "",
+    kind: str = "patched",
+) -> Path:
     info = get_model_info(model)
+    official = kind == "official"
+    filename = info.official_filename if official else info.filename
+    source_url = info.official_url if official else info.url
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
-    target = dest / info.filename
+    target = dest / filename
 
     if target.is_file():
-        _log(notify, "文件已存在，正在校验…")
-        if sha256_file(target) == info.sha256:
+        if official:
+            check = test_firmware(str(target), model)
+            if check.ok:
+                _log(notify, "已有官方固件校验通过，直接使用。", "ok")
+                return target
+        elif sha256_file(target) == info.sha256:
             _log(notify, "已有固件校验通过，直接使用。", "ok")
             return target
         _log(notify, "已有文件校验不通过，重新下载…", "warn")
         target.unlink()
 
-    _log(notify, f"正在从 GitHub 下载 {info.filename}…")
-    _status(notify, "正在下载固件…")
-
+    candidates = firmware_candidates(info, mirror, custom_prefix, kind)
+    errors: list[str] = []
     part = target.with_suffix(target.suffix + ".part")
-    request = Request(info.url, headers={"User-Agent": "open-xiaoai-flash-gui"})
-    downloaded = 0
-    last_percent = -1
+    part.unlink(missing_ok=True)
 
-    try:
-        with urlopen(request, timeout=60) as response:
-            total = int(response.headers.get("Content-Length") or 0)
-            with part.open("wb") as handle:
-                while True:
-                    chunk = response.read(256 * 1024)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-                    downloaded += len(chunk)
-                    if total:
-                        percent = downloaded * 100 // total
-                        if percent >= last_percent + 5:
-                            last_percent = percent
-                            _log(notify, f"下载中… {percent}%")
-                            _status(notify, f"正在下载固件… {percent}%")
-        part.replace(target)
-    except Exception as exc:  # noqa: BLE001 - 网络错误类型很多，统一翻译
-        part.unlink(missing_ok=True)
-        raise FlashError(f"下载失败：{exc}。可以手动下载：{info.url}（然后点「浏览」选择文件）") from exc
+    for label, url in candidates:
+        _log(notify, f"正在从 {label} 下载 {filename}…")
+        _status(notify, f"正在下载固件…（{label}）")
+        downloaded = 0
+        last_percent = -1
+        try:
+            request = Request(url, headers={"User-Agent": "open-xiaoai-flash-gui"})
+            with urlopen(request, timeout=45) as response:
+                total = int(response.headers.get("Content-Length") or 0)
+                with part.open("wb") as handle:
+                    while True:
+                        chunk = response.read(256 * 1024)
+                        if not chunk:
+                            break
+                        handle.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            percent = downloaded * 100 // total
+                            if percent >= last_percent + 5:
+                                last_percent = percent
+                                _log(notify, f"下载中… {percent}%")
+                                _status(notify, f"正在下载固件… {percent}%")
+            if part.stat().st_size < 20 * 1024 * 1024:
+                raise FlashError("下载到的文件不完整")
+            if total and downloaded < total:
+                raise FlashError("下载中断，请重试")
+            part.replace(target)
+            break
+        except Exception as exc:  # noqa: BLE001 - 网络错误类型很多
+            part.unlink(missing_ok=True)
+            errors.append(f"{label}：{exc}")
+            _log(notify, f"{label} 下载失败，尝试下一个源…", "warn")
+    else:
+        detail = "；".join(errors[-3:])
+        raise FlashError(
+            "所有下载源都失败了"
+            + (f"（{detail}）" if detail else "")
+            + f"。可以手动下载：{source_url}，然后点「浏览」选择文件；"
+            + "或在「部署 → 高级选项」里换一个下载源。"
+        )
 
-    if not target.is_file() or target.stat().st_size < 20 * 1024 * 1024:
-        raise FlashError(f"下载的文件不完整。请手动下载：{info.url}")
+    if official:
+        check = test_firmware(str(target), model)
+        if not check.ok:
+            target.unlink(missing_ok=True)
+            raise FlashError(check.error)
+        for warning in check.warnings:
+            _log(notify, warning, "warn")
+        _log(notify, f"官方固件下载完成：{target}", "ok")
+        return target
 
     _log(notify, "正在校验 SHA256…")
     if sha256_file(target) != info.sha256:

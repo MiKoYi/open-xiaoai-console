@@ -120,9 +120,9 @@ class DockerCommandTests(unittest.TestCase):
         args = dcore.docker_run_args("migpt", "/tmp/config.ts", 5000)
         self.assertIn("5000:4399", args)
 
-    def test_source_mode_rejected(self) -> None:
+    def test_unknown_mode_rejected(self) -> None:
         with self.assertRaises(dcore.DeployError):
-            dcore.docker_run_args("gemini", "/tmp/x")
+            dcore.docker_run_args("unknown", "/tmp/x")
 
     def test_connection_url(self) -> None:
         self.assertEqual(dcore.connection_url("192.168.1.10", 4399), "ws://192.168.1.10:4399")
@@ -242,12 +242,12 @@ class DiscoveryTests(unittest.TestCase):
     def test_examples_found(self) -> None:
         entries = dcore.discover_examples()
         keys = {entry.key for entry in entries}
-        self.assertTrue({"xiaozhi", "migpt", "gemini"} <= keys)
+        self.assertTrue({"xiaozhi", "migpt"} <= keys)
         specs = {entry.key: entry.spec for entry in entries}
         self.assertIsNotNone(specs["xiaozhi"])
         self.assertTrue(specs["xiaozhi"].deployable)
-        self.assertIsNotNone(specs["gemini"])
-        self.assertFalse(specs["gemini"].deployable)
+        self.assertIsNotNone(specs["migpt"])
+        self.assertTrue(specs["migpt"].deployable)
         if "kws" in keys:
             self.assertIsNone(specs["kws"])
 

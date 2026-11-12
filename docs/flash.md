@@ -33,7 +33,7 @@
 
 首先，下载或自行制作[补丁固件](../packages/client-patch/README.md)，重命名为 `root_patched.squashfs`。
 
-然后，下载刷机工具：https://androidmtk.com/download-amlogic-flash-tool
+然后，下载刷机工具：https://www.mediafire.com/file/1m9x18q1klcj5ds/Amlogic_Flash_Tool_v6.0.0.zip/file
 
 把下载好的刷机工具文件夹解压到桌面，重命名为 `Amlogic_Flash_Tool_v6.0.0`
 

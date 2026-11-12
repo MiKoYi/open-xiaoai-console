@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import platform
 import queue
+import subprocess
+import sys
 import threading
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -13,6 +17,7 @@ from urllib.parse import urlparse
 
 import deploy_core as dcore
 import flash_core as core
+import patch_core as patcher
 import tooling
 
 ROOT = Path(__file__).resolve().parent
@@ -102,7 +107,27 @@ class Hub:
         return device.version
 
     def _do_download(self, params: dict) -> str:
-        path = core.download_firmware(self.root_dir / "firmware", params.get("model", "LX06"), self.notify)
+        path = core.download_firmware(
+            self.root_dir / "firmware",
+            params.get("model", "LX06"),
+            self.notify,
+            mirror=self.state.get("mirror", "auto"),
+            custom_prefix=self.state.get("mirror_prefix", ""),
+            kind=params.get("kind", "patched"),
+        )
+        return str(path)
+
+    def _do_patch(self, params: dict) -> str:
+        ssh = None
+        if params.get("target") == "remote":
+            ssh = dcore.SshConfig(**params["ssh"])
+        path = patcher.patch_official(
+            params["image"],
+            params.get("model", "LX06"),
+            target=params.get("target", "local"),
+            ssh=ssh,
+            notify=self.notify,
+        )
         return str(path)
 
     def _do_find_exe(self, params: dict) -> str:
@@ -341,6 +366,7 @@ def bootstrap_payload(hub: Hub) -> dict:
         ],
         "tutorial_url": core.TUTORIAL_URL,
         "tool_url": core.TOOL_URL,
+        "patch_guide_url": patcher.GUIDE_URL,
         "github_url": GITHUB_URL,
         "bundled_exe": tool_exe,
         "tool_source": tool_source,
@@ -348,6 +374,67 @@ def bootstrap_payload(hub: Hub) -> dict:
         "tool_error": tool_error,
         "paramiko": has_paramiko,
     }
+
+
+def env_payload() -> dict:
+    importlib.invalidate_caches()
+    tool_exe, tool_source, tool_zip, tool_error = tooling.ensure_tool(ROOT)
+    return {
+        "python": {
+            "version": platform.python_version(),
+            "path": sys.executable,
+            "venv": sys.prefix != sys.base_prefix,
+        },
+        "pywebview": importlib.util.find_spec("webview") is not None,
+        "paramiko": importlib.util.find_spec("paramiko") is not None,
+        "tool": {
+            "ok": bool(tool_exe),
+            "path": tool_exe,
+            "source": tool_source,
+            "zip": tool_zip,
+            "error": tool_error,
+        },
+    }
+
+
+def install_deps() -> dict:
+    args = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--no-input",
+    ]
+    if sys.prefix == sys.base_prefix:
+        args.append("--user")
+    args += ["-i", "https://pypi.tuna.tsinghua.edu.cn/simple", "pywebview", "paramiko"]
+
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    try:
+        completed = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=900,
+            creationflags=flags,
+        )
+        output = (completed.stdout or "") + (completed.stderr or "")
+        return {"ok": completed.returncode == 0, "output": output[-6000:], "env": env_payload()}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "output": "安装超时，请检查网络后重试。", "env": env_payload()}
+    except OSError as exc:
+        return {"ok": False, "output": str(exc), "env": env_payload()}
+
+
+def open_tools() -> dict:
+    tools = ROOT / "tools"
+    tools.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        os.startfile(tools)  # type: ignore[attr-defined]
+    return {"ok": True}
 
 
 def make_handler(hub: Hub):
@@ -412,6 +499,11 @@ def make_handler(hub: Hub):
                 self._send_json(bootstrap_payload(hub))
             elif path == "/api/status":
                 self._send_json(hub.check_status())
+            elif path == "/api/env":
+                self._send_json(env_payload())
+            elif path == "/api/docker":
+                ok, message = patcher.docker_status()
+                self._send_json({"ok": ok, "message": message})
             elif path == "/api/events":
                 self._stream_events()
             else:
@@ -457,6 +549,10 @@ def make_handler(hub: Hub):
                 self._send_json({"ok": True})
             elif path == "/api/pick":
                 self._send_json({"path": pick_file(payload.get("kind", "image"))})
+            elif path == "/api/install-deps":
+                self._send_json(install_deps())
+            elif path == "/api/open-tools":
+                self._send_json(open_tools())
             else:
                 self.send_error(404)
 

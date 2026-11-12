@@ -15,8 +15,9 @@
       <div class="brand-sub">控制台</div>
     </div>
     <nav class="nav">
-      <button class="nav-item active" data-view="flash"><span class="nav-icon">◈</span>刷机</button>
-      <button class="nav-item" data-view="deploy"><span class="nav-icon">◎</span>部署</button>
+      <button class="nav-item active" data-view="setup"><span class="nav-icon">⚙</span>初始化</button>
+      <button class="nav-item locked" data-view="flash"><span class="nav-icon">◈</span>刷机</button>
+      <button class="nav-item locked" data-view="deploy"><span class="nav-icon">◎</span>部署</button>
     </nav>
     <div class="sidebar-foot">
       <a id="link-github" class="side-link" target="_blank" rel="noreferrer">项目文档 ↗</a>
@@ -25,7 +26,7 @@
   </aside>
 
   <main class="main">
-    <section id="view-flash" class="view">
+    <section id="view-flash" class="view hidden">
       <header class="page-head">
         <h1>刷机</h1>
         <p>给音箱刷入补丁固件，开启 SSH。支持 LX06 和 OH2P。</p>
@@ -43,11 +44,15 @@
       </section>
 
       <section class="card">
-        <div class="card-head">补丁固件</div>
+        <div class="card-head">固件</div>
         <div class="row">
           <input id="image-path" readonly placeholder="还没有选择固件">
           <button class="btn" data-pick="image">浏览…</button>
-          <button class="btn" id="btn-download">下载官方固件</button>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-download-patched">下载补丁固件</button>
+          <button class="btn" id="btn-download-official">下载官方固件</button>
+          <button class="btn" id="btn-patch">制作补丁固件</button>
         </div>
         <div class="hint" id="image-info"></div>
       </section>
@@ -63,11 +68,12 @@
       </section>
 
       <div class="actions">
-        <button class="btn primary lg" id="btn-flash">开始刷机</button>
-        <button class="btn" id="btn-restore">恢复原厂系统</button>
-        <button class="btn" id="btn-identify">识别设备</button>
         <button class="btn" id="btn-driver">安装 USB 驱动</button>
+        <button class="btn" id="btn-identify">识别设备</button>
         <button class="btn" id="btn-tutorial">查看教程</button>
+        <span class="spacer"></span>
+        <button class="btn" id="btn-restore">恢复原厂系统</button>
+        <button class="btn primary lg" id="btn-flash">开始刷机</button>
       </div>
     </section>
 
@@ -89,7 +95,7 @@
           <div class="fields" id="fields"></div>
 
           <details class="advanced" id="advanced">
-            <summary>高级选项（部署方式 / 内存 / 下载源 / 镜像加速）</summary>
+            <summary>高级选项（部署方式 / 内存 / 下载源）</summary>
             <div class="options">
               <div class="opt">
                 <label>部署方式</label>
@@ -107,10 +113,6 @@
                 <label>自定义前缀</label>
                 <input id="mirror-prefix" placeholder="https://ghfast.top/">
               </div>
-              <div class="opt wide">
-                <label>Docker 镜像加速（可选）</label>
-                <input id="image-prefix" placeholder="docker.m.daocloud.io/">
-              </div>
             </div>
           </details>
 
@@ -121,6 +123,34 @@
           </div>
         </section>
       </div>
+    </section>
+
+    <section id="view-setup" class="view">
+      <header class="page-head">
+        <h1>初始化</h1>
+        <p>先完成环境检查，安装依赖后才能进入刷机 / 部署。</p>
+      </header>
+
+      <section class="card">
+        <div class="card-head">运行环境</div>
+        <div class="env-list" id="env-list"></div>
+        <div class="row end">
+          <button class="btn" id="btn-env-refresh">重新检测</button>
+          <button class="btn" id="btn-env-install">安装依赖</button>
+          <button class="btn primary" id="btn-env-next" disabled>下一步：刷机</button>
+        </div>
+        <div class="hint" id="env-hint">正在检测环境…</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">刷机工具</div>
+        <div class="hint" id="setup-tool">正在检测…</div>
+        <div class="row end">
+          <button class="btn" id="btn-setup-tool-download">下载工具</button>
+          <button class="btn" id="btn-setup-tools">打开目录</button>
+          <button class="btn" id="btn-setup-tool-refresh">重新检测</button>
+        </div>
+      </section>
     </section>
 
     <div class="statusline">
@@ -167,6 +197,25 @@
       <button class="btn" id="ssh-cancel">取消</button>
       <button class="btn primary" id="ssh-confirm">连接并部署</button>
     </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="confirm-modal">
+  <div class="modal-card confirm-card">
+    <h3 id="confirm-title">请确认</h3>
+    <p class="hint" id="confirm-message"></p>
+    <div class="row end">
+      <button class="btn" id="confirm-cancel">取消</button>
+      <button class="btn primary" id="confirm-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="choice-modal">
+  <div class="modal-card confirm-card">
+    <h3 id="choice-title">请选择</h3>
+    <p class="hint" id="choice-message"></p>
+    <div class="choice-actions" id="choice-actions"></div>
   </div>
 </div>
 

@@ -4,10 +4,10 @@
 
 获取方式：
 
-1. 初始化页点「下载工具」，打开[官方页面](https://androidmtk.com/download-amlogic-flash-tool)；
+1. 控制台左侧「初始化」→「下载工具」，打开[下载地址](https://www.mediafire.com/file/1m9x18q1klcj5ds/Amlogic_Flash_Tool_v6.0.0.zip/file)；
 2. 下载 `Amlogic_Flash_Tool_v6.0.0` 的 zip；
 3. 把 zip 放进本目录（不需要手动解压）；
-4. 回到初始化页点「重新检测」。
+4. 回到「初始化」点「重新检测」。
 
 支持两种形式：
 

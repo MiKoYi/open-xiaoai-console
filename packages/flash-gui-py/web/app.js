@@ -10,6 +10,9 @@ const S = {
   busy: false,
   lastAction: "",
   ssh: null,
+  env: null,
+  ready: false,
+  sshPurpose: "deploy",
 };
 
 window.addEventListener("error", (event) => {
@@ -65,8 +68,9 @@ function setBusy(busy) {
   S.busy = busy;
   $("#busy").classList.toggle("hidden", !busy);
   const ids = [
-    "btn-flash", "btn-restore", "btn-identify", "btn-download",
-    "btn-deploy-local", "btn-deploy-remote", "btn-find-exe", "btn-driver",
+    "btn-flash", "btn-restore", "btn-identify", "btn-download-patched",
+    "btn-download-official", "btn-patch", "btn-deploy-local", "btn-deploy-remote",
+    "btn-find-exe", "btn-driver",
   ];
   ids.forEach((id) => { const node = document.getElementById(id); if (node) node.disabled = busy; });
   $$("[data-pick]").forEach((node) => { node.disabled = busy; });
@@ -82,6 +86,47 @@ function toast(message, isError = false) {
   toastTimer = setTimeout(() => node.classList.add("hidden"), isError ? 6000 : 3500);
 }
 
+function askConfirm(message, options = {}) {
+  return new Promise((resolve) => {
+    const modal = $("#confirm-modal");
+    $("#confirm-title").textContent = options.title || "请确认";
+    $("#confirm-message").textContent = message;
+    $("#confirm-ok").textContent = options.okText || "确定";
+    $("#confirm-cancel").textContent = options.cancelText || "取消";
+    $("#confirm-cancel").classList.toggle("hidden", Boolean(options.alert));
+    modal.classList.remove("hidden");
+
+    const finish = (value) => {
+      modal.classList.add("hidden");
+      $("#confirm-ok").onclick = null;
+      $("#confirm-cancel").onclick = null;
+      resolve(value);
+    };
+    $("#confirm-ok").onclick = () => finish(true);
+    $("#confirm-cancel").onclick = () => finish(false);
+  });
+}
+
+function askChoice(title, message, choices) {
+  return new Promise((resolve) => {
+    const modal = $("#choice-modal");
+    $("#choice-title").textContent = title;
+    $("#choice-message").textContent = message;
+    const box = $("#choice-actions");
+    box.innerHTML = "";
+    choices.forEach((choice) => {
+      const button = el("button", `btn${choice.primary ? " primary" : ""}`, choice.label);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        modal.classList.add("hidden");
+        resolve(choice.value);
+      });
+      box.appendChild(button);
+    });
+    modal.classList.remove("hidden");
+  });
+}
+
 /* ---------------- 设置 ---------------- */
 
 let saveTimer = null;
@@ -92,7 +137,6 @@ function saveSettings() {
   S.settings.memory = $("#memory").value.trim();
   S.settings.mirror = $("#mirror").value;
   S.settings.mirror_prefix = $("#mirror-prefix").value.trim();
-  S.settings.image_prefix = $("#image-prefix").value.trim();
   S.settings.port = $("#port").value.trim();
   S.settings.image = $("#image-path").value;
   S.settings.exe = $("#exe-path").value;
@@ -203,22 +247,66 @@ function renderFields(mode) {
   mode.fields.forEach((field) => {
     const wrap = el("div", "field");
     const label = el("label", "", field.label + (field.required ? " *" : ""));
-    let input;
+    const current = values[field.key] ?? "";
+
     if (field.multiline) {
-      input = el("textarea");
-      input.value = values[field.key] ?? "";
+      const input = el("textarea");
+      input.value = current;
+      input.addEventListener("input", () => {
+        values[field.key] = input.value;
+        saveSettings();
+      });
+      wrap.appendChild(label);
+      wrap.appendChild(input);
+    } else if (field.options && field.options.length) {
+      const select = el("select");
+      field.options.forEach((option) => {
+        const node = el("option", "", option);
+        node.value = option;
+        select.appendChild(node);
+      });
+      const customOption = el("option", "", "自定义…");
+      customOption.value = "__custom__";
+      select.appendChild(customOption);
+
+      const customInput = el("input");
+      customInput.placeholder = field.placeholder || "自定义";
+      const known = field.options.includes(current);
+      select.value = known ? current : "__custom__";
+      customInput.value = known ? "" : current;
+      customInput.classList.toggle("hidden", known);
+
+      select.addEventListener("change", () => {
+        if (select.value === "__custom__") {
+          values[field.key] = customInput.value;
+          customInput.classList.remove("hidden");
+          customInput.focus();
+        } else {
+          values[field.key] = select.value;
+          customInput.classList.add("hidden");
+        }
+        saveSettings();
+      });
+      customInput.addEventListener("input", () => {
+        values[field.key] = customInput.value;
+        saveSettings();
+      });
+
+      wrap.appendChild(label);
+      wrap.appendChild(select);
+      wrap.appendChild(customInput);
     } else {
-      input = el("input");
+      const input = el("input");
       if (field.secret) input.type = "password";
-      input.value = values[field.key] ?? "";
+      input.value = current;
       input.placeholder = field.placeholder || "";
+      input.addEventListener("input", () => {
+        values[field.key] = input.value;
+        saveSettings();
+      });
+      wrap.appendChild(label);
+      wrap.appendChild(input);
     }
-    input.addEventListener("input", () => {
-      values[field.key] = input.value;
-      saveSettings();
-    });
-    wrap.appendChild(label);
-    wrap.appendChild(input);
     if (field.help) wrap.appendChild(el("div", "hint", field.help));
     box.appendChild(wrap);
   });
@@ -255,7 +343,6 @@ function applySettings() {
   const st = S.settings;
   $("#memory").value = st.memory || "";
   $("#mirror-prefix").value = st.mirror_prefix || "";
-  $("#image-prefix").value = st.image_prefix || "";
   $("#port").value = st.port || S.data.defaults.port;
   $("#speaker-ip").value = st.speaker_ip || "";
   $("#image-path").value = st.image || "";
@@ -306,10 +393,18 @@ async function boot() {
     if (github) github.href = S.data.github_url;
 
     bindUI();
+    await loadEnv();
     if (!location.search.includes("no-sse")) connectEvents();
     checkStatus();
     setInterval(checkStatus, 15000);
-    if (new URLSearchParams(location.search).get("view") === "deploy") switchView("deploy");
+    const view = new URLSearchParams(location.search).get("view");
+    if (view === "setup") {
+      switchView("setup");
+    } else if (S.ready) {
+      switchView(view === "deploy" ? "deploy" : "flash");
+    } else {
+      switchView("setup");
+    }
     log("控制台已就绪。");
   } catch (error) {
     log(`初始化失败：${error.message}`, "error");
@@ -332,10 +427,11 @@ function bindUI() {
   $("#speaker-ip").addEventListener("change", () => { saveSettings(); checkStatus(); });
   $("#memory").addEventListener("input", saveSettings);
   $("#mirror-prefix").addEventListener("input", saveSettings);
-  $("#image-prefix").addEventListener("input", saveSettings);
   $("#port").addEventListener("input", saveSettings);
 
-  $("#btn-download").addEventListener("click", () => start("download", { model: S.model }));
+  $("#btn-download-patched").addEventListener("click", () => start("download", { model: S.model, kind: "patched" }));
+  $("#btn-download-official").addEventListener("click", () => start("download", { model: S.model, kind: "official" }));
+  $("#btn-patch").addEventListener("click", startPatchFlow);
   $("#btn-find-exe").addEventListener("click", () => start("find_exe", {}));
   $("#btn-flash").addEventListener("click", startFlash);
   $("#btn-restore").addEventListener("click", startRestore);
@@ -344,8 +440,21 @@ function bindUI() {
   $("#btn-tutorial").addEventListener("click", () => window.open(S.data.tutorial_url, "_blank"));
 
   $("#btn-deploy-local").addEventListener("click", deployLocal);
-  $("#btn-deploy-remote").addEventListener("click", () => openSshModal());
+  $("#btn-deploy-remote").addEventListener("click", () => openSshModal("deploy"));
   $("#btn-check").addEventListener("click", checkStatus);
+
+  $("#btn-env-refresh").addEventListener("click", loadEnv);
+  $("#btn-env-install").addEventListener("click", installDeps);
+  $("#btn-env-next").addEventListener("click", () => {
+    if (!S.ready) {
+      toast("请先安装依赖", true);
+      return;
+    }
+    switchView("flash");
+  });
+  $("#btn-setup-tools").addEventListener("click", () => api("/api/open-tools", { method: "POST", body: {} }));
+  $("#btn-setup-tool-refresh").addEventListener("click", loadEnv);
+  $("#btn-setup-tool-download").addEventListener("click", () => window.open(S.data.tool_url, "_blank"));
 
   $("#ssh-auth").addEventListener("change", toggleSshAuth);
   $("#ssh-cancel").addEventListener("click", closeSshModal);
@@ -357,9 +466,98 @@ function bindUI() {
 }
 
 function switchView(view) {
+  if (view !== "setup" && !S.ready) {
+    toast("请先完成初始化", true);
+    view = "setup";
+  }
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $("#view-flash").classList.toggle("hidden", view !== "flash");
   $("#view-deploy").classList.toggle("hidden", view !== "deploy");
+  $("#view-setup").classList.toggle("hidden", view !== "setup");
+  if (view === "setup") loadEnv();
+}
+
+function applyLock() {
+  $$(".nav-item").forEach((button) => {
+    const locked = button.dataset.view !== "setup" && !S.ready;
+    button.classList.toggle("locked", locked);
+    button.setAttribute("aria-disabled", locked ? "true" : "false");
+  });
+  const next = $("#btn-env-next");
+  if (next) next.disabled = !S.ready;
+}
+
+async function loadEnv() {
+  try {
+    const env = await api("/api/env");
+    S.env = env;
+    renderEnv(env);
+  } catch (error) {
+    $("#env-hint").textContent = `检测失败：${error.message}`;
+  }
+}
+
+function renderEnv(env) {
+  const list = $("#env-list");
+  list.innerHTML = "";
+  const rows = [
+    {
+      name: "Python",
+      ok: true,
+      value: `${env.python.version}${env.python.venv ? "（.venv）" : ""} · ${env.python.path}`,
+    },
+    { name: "pywebview", ok: env.pywebview, value: env.pywebview ? "已安装" : "未安装" },
+    { name: "paramiko", ok: env.paramiko, value: env.paramiko ? "已安装" : "未安装" },
+  ];
+  rows.forEach((row) => {
+    const item = el("div", "env-item");
+    item.appendChild(el("span", `dot ${row.ok ? "ok" : "err"}`));
+    item.appendChild(el("span", "env-name", row.name));
+    item.appendChild(el("span", "env-value", row.value));
+    list.appendChild(item);
+  });
+
+  const missing = !env.pywebview || !env.paramiko;
+  S.ready = !missing;
+  applyLock();
+  $("#btn-env-install").disabled = !missing;
+
+  if (missing) {
+    $("#env-hint").textContent = "缺少依赖。安装完成并重启控制台后，才能进入下一步。";
+  } else if (!(env.tool && env.tool.ok)) {
+    $("#env-hint").textContent = "依赖已就绪；刷机工具未找到，刷机前请先下载并放进 tools\\。";
+  } else {
+    $("#env-hint").textContent = "初始化完成，可以进入刷机或部署。";
+  }
+
+  const tool = env.tool || {};
+  $("#setup-tool").textContent = tool.ok
+    ? `已找到：${tool.path}`
+    : "未找到。把 Amlogic 刷机工具 zip 放进 tools\\ 目录，或点「下载工具」。";
+}
+
+async function installDeps() {
+  const button = $("#btn-env-install");
+  button.disabled = true;
+  button.textContent = "安装中…";
+  $("#env-hint").textContent = "正在安装 pywebview、paramiko，请稍候…";
+  try {
+    const result = await api("/api/install-deps", { method: "POST", body: {} });
+    if (result.env) renderEnv(result.env);
+    if (result.ok) {
+      log("依赖安装完成，重启控制台后生效。", "ok");
+      $("#env-hint").textContent = "依赖安装完成，重启控制台后生效。";
+    } else {
+      log(result.output || "依赖安装失败。", "error");
+      $("#env-hint").textContent = "依赖安装失败，详情见下方日志。";
+    }
+  } catch (error) {
+    log(`依赖安装失败：${error.message}`, "error");
+    $("#env-hint").textContent = `依赖安装失败：${error.message}`;
+  } finally {
+    button.disabled = false;
+    button.textContent = "安装依赖";
+  }
 }
 
 async function pickFile(kind) {
@@ -397,25 +595,61 @@ async function start(action, params) {
   }
 }
 
-function startFlash() {
+async function startFlash() {
   const exe = $("#exe-path").value.trim();
   const image = $("#image-path").value.trim();
   const model = currentModel();
   if (!exe) return toast("请先指定 Amlogic 刷机工具的 update.exe", true);
   if (!image) return toast("请先选择补丁固件", true);
-  const ok = window.confirm(
+  const ok = await askConfirm(
     `开始前请再确认：\n\n• 音箱是「${model.name}」\n• 当前固件是 ${model.version}\n• ${model.connection}\n\n` +
-    `点「确定」后请立刻拔掉电源再插上。刷机有变砖风险，确定继续吗？`
+    `点「确定」后请立刻拔掉电源再插上。刷机有变砖风险，确定继续吗？`,
+    { title: "确认开始刷机", okText: "开始刷机" },
   );
   if (!ok) return;
   start("flash", { exe, image, model: S.model });
 }
 
-function startRestore() {
+async function startRestore() {
   const exe = $("#exe-path").value.trim();
   if (!exe) return toast("请先指定 update.exe", true);
-  if (!window.confirm("将把启动分区切回 boot1（原厂系统）。点「确定」后请立刻拔掉电源再插上。")) return;
+  const ok = await askConfirm(
+    "将把启动分区切回 boot1（原厂系统）。点「确定」后请立刻拔掉电源再插上。",
+    { title: "恢复原厂系统", okText: "恢复" },
+  );
+  if (!ok) return;
   start("restore", { exe, model: S.model });
+}
+
+async function startPatchFlow() {
+  const image = $("#image-path").value.trim();
+  if (!image) return toast("请先选择官方固件（.squashfs）", true);
+
+  let docker = { ok: false, message: "" };
+  try {
+    docker = await api("/api/docker");
+  } catch (_) { /* ignore */ }
+
+  if (docker.ok) {
+    const ok = await askConfirm(
+      "将用本机 Docker 把官方固件制作成补丁固件（开启 SSH、禁用自动更新等）。\n\n制作过程中请不要关闭控制台。",
+      { title: "制作补丁固件", okText: "开始制作" },
+    );
+    if (ok) start("patch", { image, model: S.model, target: "local" });
+    return;
+  }
+
+  const choice = await askChoice(
+    "制作补丁固件",
+    `本机没有可用的 Docker（${docker.message || "未检测到"}）。可以把官方固件上传到远程服务器，用那边的 Docker 制作。`,
+    [
+      { label: "使用远程服务器 Docker", value: "remote", primary: true },
+      { label: "查看手动教程", value: "guide" },
+      { label: "取消", value: null },
+    ],
+  );
+  if (choice === "remote") openSshModal("patch");
+  else if (choice === "guide") window.open(S.data.patch_guide_url, "_blank");
 }
 
 function deployParams(target, ssh = null) {
@@ -444,29 +678,38 @@ function deployParams(target, ssh = null) {
     memory,
     mirror: $("#mirror").value,
     mirror_prefix: $("#mirror-prefix").value.trim(),
-    image_prefix: $("#image-prefix").value.trim(),
     target,
     ssh,
   };
 }
 
-function deployLocal() {
+async function deployLocal() {
   const mode = currentMode();
   if (!mode.deployable) return toast(mode.note || "该接入方式暂不支持一键部署", true);
   const params = deployParams("local");
   if (!params) return;
   const methodText = S.method === "source" ? "源码构建（本机下载并编译）" : `官方镜像 ${mode.image}`;
-  if (!window.confirm(`将用 Docker 在本机启动 ${mode.title}：\n\n方式：${methodText}\n端口：${params.port}\n内存上限：${params.memory || "不限制"}\n\n继续吗？`)) return;
+  const ok = await askConfirm(
+    `将用 Docker 在本机启动 ${mode.title}：\n\n方式：${methodText}\n端口：${params.port}\n内存上限：${params.memory || "不限制"}\n\n继续吗？`,
+    { title: "部署到本机 Docker", okText: "开始部署" },
+  );
+  if (!ok) return;
   start("deploy", params);
 }
 
-function openSshModal() {
-  const mode = currentMode();
-  if (!mode.deployable) return toast(mode.note || "该接入方式暂不支持一键部署", true);
+function openSshModal(purpose = "deploy") {
+  S.sshPurpose = purpose;
+  if (purpose === "deploy") {
+    const mode = currentMode();
+    if (!mode.deployable) return toast(mode.note || "该接入方式暂不支持一键部署", true);
+  }
+  $("#ssh-confirm").textContent = purpose === "patch" ? "连接并制作" : "连接并部署";
+  $("#ssh-hint").textContent = purpose === "patch"
+    ? "需要服务器已安装 Docker，并可以用 SSH 登录。官方固件会临时上传到服务器。"
+    : (S.data.paramiko
+      ? "需要服务器已安装 Docker，并且可以用 SSH 登录。"
+      : "本机缺少 paramiko，远程部署前需要安装（引导器会自动处理）。");
   $("#ssh-modal").classList.remove("hidden");
-  $("#ssh-hint").textContent = S.data.paramiko
-    ? "需要服务器已安装 Docker，并且可以用 SSH 登录。"
-    : "本机缺少 paramiko，远程部署前需要安装（引导器会自动处理）。";
 }
 
 function closeSshModal() {
@@ -490,6 +733,15 @@ function confirmRemoteDeploy() {
   const ssh = { host, port, user, password: useKey ? "" : $("#ssh-password").value, key_path: useKey ? $("#ssh-key").value.trim() : "" };
   if (!useKey && !ssh.password) return toast("请填写 SSH 密码", true);
   if (useKey && !ssh.key_path) return toast("请选择 SSH 私钥", true);
+
+  if (S.sshPurpose === "patch") {
+    const image = $("#image-path").value.trim();
+    if (!image) return toast("请先选择官方固件", true);
+    S.ssh = ssh;
+    closeSshModal();
+    start("patch", { image, model: S.model, target: "remote", ssh });
+    return;
+  }
 
   const params = deployParams("remote", ssh);
   if (!params) return;
@@ -550,11 +802,11 @@ function handleDone(event) {
   const action = event.action;
   const result = event.result || "";
 
-  if (action === "download" && result) {
+  if ((action === "download" || action === "patch") && result) {
     $("#image-path").value = result;
     updateImageInfo();
     saveSettings();
-    toast("固件已下载并校验通过");
+    toast(action === "patch" ? "补丁固件已生成" : "固件已下载");
   } else if (action === "find_exe" && result) {
     $("#exe-path").value = result;
     $("#exe-info").className = "hint ok";

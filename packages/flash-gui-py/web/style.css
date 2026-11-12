@@ -66,6 +66,7 @@ html, body {
 }
 .nav-item:hover { background: rgba(255, 255, 255, .06); color: #e5e7eb; }
 .nav-item.active { background: rgba(255, 255, 255, .1); color: #fff; box-shadow: inset 3px 0 0 var(--accent); }
+.nav-item.locked { opacity: .4; cursor: not-allowed; }
 .nav-icon { font-size: 14px; opacity: .9; }
 
 .sidebar-foot { margin-top: auto; padding: 0 20px; display: flex; flex-direction: column; gap: 8px; }
@@ -123,6 +124,11 @@ html, body {
 }
 .danger-note strong { color: #b45309; }
 .danger-note span { overflow: hidden; text-overflow: ellipsis; }
+
+.env-list { display: flex; flex-direction: column; gap: 10px; margin: 8px 0 14px; }
+.env-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.env-name { width: 100px; flex: 0 0 auto; font-weight: 600; }
+.env-value { color: var(--muted); word-break: break-all; }
 
 /* ---------- 表单 ---------- */
 
@@ -204,14 +210,26 @@ button { font: inherit; }
 
 /* ---------- 操作区 ---------- */
 
-.actions { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0 6px; }
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  background: var(--bg);
+  box-shadow: 0 -10px 14px -14px rgba(15, 23, 42, .35);
+}
 
 /* ---------- 部署页 ---------- */
 
-.deploy { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 16px; align-items: start; }
+.deploy { display: flex; flex-direction: column; gap: 14px; }
 
-.modes { display: flex; flex-direction: column; gap: 10px; }
+.modes { display: flex; flex-direction: row; gap: 10px; flex-wrap: wrap; }
 .mode {
+  flex: 1 1 0;
+  min-width: 180px;
   text-align: left;
   border: 1px solid var(--border);
   background: #fff;
@@ -227,6 +245,13 @@ button { font: inherit; }
 .mode-tag { display: inline-block; margin-top: 7px; font-size: 10px; padding: 1px 7px; border-radius: 999px; background: #fef3c7; color: #92400e; }
 
 .detail { min-width: 0; }
+.detail > .row.end {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: var(--card);
+  padding: 10px 0 4px;
+}
 .detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .detail-head h2 { margin: 0; font-size: 19px; }
 .link { color: var(--accent); font-size: 12px; text-decoration: none; font-weight: 600; }
@@ -246,6 +271,7 @@ button { font: inherit; }
 
 .fields { display: flex; flex-direction: column; gap: 11px; margin-top: 14px; }
 .field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.field select + input { margin-top: 6px; }
 .field .hint { margin-top: 4px; }
 
 .options {
@@ -285,8 +311,8 @@ button { font: inherit; }
 .busy.hidden { display: none; }
 
 .log {
-  flex: 0 0 185px;
-  height: 185px;
+  flex: 0 0 160px;
+  height: 160px;
   margin: 6px 0 0;
   padding: 14px 16px;
   background: var(--log);
@@ -351,6 +377,10 @@ button { font: inherit; }
 .modal-card h3 { margin: 0 0 6px; font-size: 18px; }
 .modal-card .hint { margin-top: 0; }
 .modal-card .row.end { margin-top: 20px; gap: 10px; }
+.confirm-card { width: 480px; }
+#confirm-message { white-space: pre-line; line-height: 1.7; }
+.choice-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.choice-actions .btn { width: 100%; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
 .form-grid label { display: block; font-size: 12px; font-weight: 600; }
 .form-grid label input, .form-grid label select { margin-top: 5px; }
