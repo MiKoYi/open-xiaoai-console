@@ -183,7 +183,7 @@ function updateImageInfo() {
   const node = $("#image-info");
   if (!path) {
     node.className = "hint";
-    node.textContent = `还没有选择固件。点「下载官方固件」自动下载 ${model.filename}，或手动选择已下载的文件。`;
+    node.textContent = `还没有选择固件。点「下载补丁固件」自动下载 ${model.filename}；或下载官方固件后点「制作补丁固件」。`;
     return;
   }
   const name = path.split(/[\\/]/).pop();

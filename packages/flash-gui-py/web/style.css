@@ -234,7 +234,7 @@ button { font: inherit; }
   border: 1px solid var(--border);
   background: #fff;
   border-radius: 12px;
-  padding: 13px 14px;
+  padding: 10px 13px;
   cursor: pointer;
   transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
@@ -311,8 +311,8 @@ button { font: inherit; }
 .busy.hidden { display: none; }
 
 .log {
-  flex: 0 0 160px;
-  height: 160px;
+  flex: 0 0 125px;
+  height: 125px;
   margin: 6px 0 0;
   padding: 14px 16px;
   background: var(--log);
