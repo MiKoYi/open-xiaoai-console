@@ -42,16 +42,52 @@ def center_position(width: int, height: int) -> tuple[int | None, int | None]:
 
 
 def bring_to_front(window, icon_path: Path) -> None:
-    """置前并设置窗口/任务栏图标。"""
+    """等窗口创建后设置图标并置前。"""
     if os.name != "nt":
         return
     try:
-        time.sleep(0.4)
         user32 = ctypes.windll.user32
         user32.FindWindowW.restype = ctypes.c_void_p
-        hwnd = user32.FindWindowW(None, "Open-XiaoAI 控制台")
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+        user32.SendMessageW.restype = ctypes.c_void_p
+        user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
+        user32.SetWindowPos.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        user32.GetSystemMetrics.argtypes = [ctypes.c_int]
+
+        native = getattr(window, "native", None)
+        hwnd = 0
+        if native is not None:
+            try:
+                hwnd = int(native.Handle)
+            except Exception:  # noqa: BLE001 - 拿不到原生句柄就走 FindWindow
+                hwnd = 0
+        if not hwnd:
+            deadline = time.time() + 8
+            while time.time() < deadline:
+                hwnd = user32.FindWindowW(None, "Open-XiaoAI 控制台")
+                if hwnd:
+                    break
+                time.sleep(0.2)
         if not hwnd:
             return
+
+        if icon_path.is_file() and native is not None:
+            try:
+                from System.Drawing import Icon  # type: ignore[import-not-found]
+
+                native.Icon = Icon(str(icon_path))
+            except Exception:  # noqa: BLE001 - pythonnet 不可用时退回 Win32
+                pass
+
         if icon_path.is_file():
             user32.LoadImageW.restype = ctypes.c_void_p
             user32.LoadImageW.argtypes = [
@@ -62,10 +98,17 @@ def bring_to_front(window, icon_path: Path) -> None:
                 ctypes.c_int,
                 ctypes.c_uint,
             ]
-            hicon = user32.LoadImageW(None, str(icon_path), 1, 0, 0, 0x10 | 0x40)
-            if hicon:
-                user32.SendMessageW(ctypes.c_void_p(hwnd), 0x80, 1, ctypes.c_void_p(hicon))
-                user32.SendMessageW(ctypes.c_void_p(hwnd), 0x80, 0, ctypes.c_void_p(hicon))
+            big_w = user32.GetSystemMetrics(11)
+            big_h = user32.GetSystemMetrics(12)
+            small_w = user32.GetSystemMetrics(49)
+            small_h = user32.GetSystemMetrics(50)
+            hicon_big = user32.LoadImageW(None, str(icon_path), 1, big_w, big_h, 0x10)
+            hicon_small = user32.LoadImageW(None, str(icon_path), 1, small_w, small_h, 0x10)
+            if hicon_big:
+                user32.SendMessageW(ctypes.c_void_p(hwnd), 0x80, 1, ctypes.c_void_p(hicon_big))
+            if hicon_small:
+                user32.SendMessageW(ctypes.c_void_p(hwnd), 0x80, 0, ctypes.c_void_p(hicon_small))
+
         user32.ShowWindow(ctypes.c_void_p(hwnd), 9)
         user32.SetWindowPos(ctypes.c_void_p(hwnd), ctypes.c_void_p(-1), 0, 0, 0, 0, 0x0001 | 0x0002)
         user32.SetForegroundWindow(ctypes.c_void_p(hwnd))
@@ -139,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
-        webview.start(lambda: bring_to_front(window, icon_path), debug=args.debug)
+        webview.start(lambda: bring_to_front(window, icon_path), debug=args.debug, icon=str(icon_path))
     finally:
         httpd.shutdown()
     return 0

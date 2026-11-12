@@ -33,6 +33,8 @@
 4. 把 Amlogic 刷机工具的 zip 放进 `packages/flash-gui-py/tools/`（页面里有官网下载入口）；
 5. 回到控制台，选择机型、固件和刷机工具，开始刷机。
 
+环境已经装好时，双击 `启动控制台.cmd` 会直接打开控制台；想重新打开初始化页面，双击 `初始化环境.cmd`。
+
 详细说明见 [控制台文档](packages/flash-gui-py/README.md)。
 
 ## 支持机型
