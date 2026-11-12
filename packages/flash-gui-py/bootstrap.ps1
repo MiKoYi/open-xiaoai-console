@@ -11,6 +11,10 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
 
+$script:LogDir = Join-Path $Root 'logs'
+New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
+try { Start-Transcript -Path (Join-Path $script:LogDir 'bootstrap.log') -Append -Force | Out-Null } catch { }
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 

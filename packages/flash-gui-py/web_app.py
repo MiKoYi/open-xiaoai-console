@@ -18,6 +18,15 @@ from pathlib import Path
 from web_server import serve_background
 
 
+class _RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
 def wait_browser(url: str) -> None:
     webbrowser.open(url)
     try:
@@ -32,10 +41,22 @@ def center_position(width: int, height: int) -> tuple[int | None, int | None]:
         return None, None
     try:
         user32 = ctypes.windll.user32
-        screen_width = user32.GetSystemMetrics(0)
-        screen_height = user32.GetSystemMetrics(1)
-        if screen_width and screen_height:
-            return max(0, (screen_width - width) // 2), max(0, (screen_height - height) // 2)
+        user32.SystemParametersInfoW.argtypes = [
+            ctypes.c_uint,
+            ctypes.c_uint,
+            ctypes.c_void_p,
+            ctypes.c_uint,
+        ]
+        work = _RECT()
+        if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work), 0):
+            left, top = work.left, work.top
+            right, bottom = work.right, work.bottom
+        else:
+            left, top = 0, 0
+            right = user32.GetSystemMetrics(0)
+            bottom = user32.GetSystemMetrics(1)
+        if right > left and bottom > top:
+            return left + max(0, (right - left - width) // 2), top + max(0, (bottom - top - height) // 2)
     except Exception:  # noqa: BLE001 - 取屏幕尺寸失败就交给系统
         pass
     return None, None
@@ -79,6 +100,35 @@ def bring_to_front(window, icon_path: Path) -> None:
                 time.sleep(0.2)
         if not hwnd:
             return
+
+        user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(_RECT)]
+        rect = _RECT()
+        if user32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(rect)):
+            work = _RECT()
+            user32.SystemParametersInfoW.argtypes = [
+                ctypes.c_uint,
+                ctypes.c_uint,
+                ctypes.c_void_p,
+                ctypes.c_uint,
+            ]
+            if user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work), 0):
+                width = rect.right - rect.left
+                height = rect.bottom - rect.top
+                x = work.left + max(0, (work.right - work.left - width) // 2)
+                y = work.top + max(0, (work.bottom - work.top - height) // 2)
+                user32.SetWindowPos(
+                    ctypes.c_void_p(hwnd),
+                    ctypes.c_void_p(0),
+                    x,
+                    y,
+                    0,
+                    0,
+                    0x0001 | 0x0004 | 0x0010,
+                )
+                try:
+                    window.move(x, y)
+                except Exception:  # noqa: BLE001 - 部分后端不支持 move
+                    pass
 
         if icon_path.is_file() and native is not None:
             try:
