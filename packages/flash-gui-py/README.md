@@ -22,7 +22,7 @@
 | 项目 | 状态 | 操作 |
 |---|---|---|
 | Python 3.9+ | 已安装 / 未检测到 | **下载并安装**（自动下载官方安装包）或 **手动选择** `python.exe` |
-| 界面依赖 | 已安装 / 缺少 | 点「安装依赖」，优先用内置 `wheels/` 离线安装 |
+| 界面依赖 | 已安装 / 缺少 | 点「安装依赖」，从 PyPI 镜像在线安装 |
 | 刷机工具 | 已找到 / 未找到 | 可选，点「下载工具」去官网下载，或「打开目录」放入 zip |
 
 - Python 安装**不是静默的**：点「下载并安装」会先下载官方安装包，下载完成后弹出安装程序（`/passive` 显示进度），装完页面自动刷新。
@@ -47,11 +47,9 @@ powershell -File bootstrap.ps1 -Setup
 | Python 安装包 | 初始化页点「下载并安装」自动下载；或手动放到 `installer\python-3.12.7-amd64.exe` |
 | Amlogic 刷机工具 | 点「下载工具」去[官网](https://androidmtk.com/download-amlogic-flash-tool)下载 zip，放进 `tools\` |
 
-- `wheels/`（pywebview / paramiko 的离线依赖）仍然保留，首次装依赖不需要联网；许可证清单见 `wheels/README.md`，不需要离线安装也可以整个删掉。
+- 安装依赖时走清华 PyPI 镜像，失败会再试阿里云镜像，需要联网。
 - `tools/` 下放 zip 或解压好的文件夹都行，初始化时会自动解压并找到 `update.exe`。
-- 这两个目录下的二进制已经写进 `.gitignore`，不会误提交。
-
-> 如果目标机器用的是别的 Python 版本（比如 3.10），`wheels/` 里的 cp312 包装不上，安装依赖时会自动转去 PyPI 镜像在线安装。
+- `installer/` 和 `tools/` 下的二进制已经写进 `.gitignore`，不会误提交。
 
 ## 功能
 
@@ -87,7 +85,6 @@ packages/flash-gui-py/
 ├── installer/
 │   ├── README.md
 │   └── download_python.ps1 # 自动下载 Python 安装包（镜像优先）
-├── wheels/                 # pywebview / paramiko 离线依赖
 ├── tools/                  # 放晶晨刷机工具 zip（不提交）
 ├── setup/
 │   ├── index.html          # 初始化页面

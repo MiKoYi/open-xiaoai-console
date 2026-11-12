@@ -33,7 +33,6 @@ $script:DownloadProc = $null
 $script:DownloadError = ''
 $script:PipProc = $null
 $script:Task = ''
-$script:ForceOnline = $false
 $script:Shutdown = $false
 
 # ---------------- 检测 ----------------
@@ -232,7 +231,6 @@ function Update-Processes {
         $script:PipProc = $null
         $script:Task = ''
         Refresh-State
-        if (-not $script:DepsOk) { $script:ForceOnline = $true }
     }
 }
 
@@ -321,20 +319,12 @@ function Start-DepsInstall {
     "开始安装界面依赖…" | Set-Content -LiteralPath $script:DepsLog -Encoding UTF8
     Remove-Item -LiteralPath $script:DepsErr -Force -ErrorAction SilentlyContinue
 
-    $wheelDir = Join-Path $Root 'wheels'
-    if ((Test-Path -LiteralPath $wheelDir) -and (-not $script:ForceOnline)) {
-        $arguments = @(
-            '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
-            '--no-index', '--find-links', $wheelDir,
-            'pywebview', 'paramiko'
-        )
-    } else {
-        $arguments = @(
-            '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
-            '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple',
-            'pywebview', 'paramiko'
-        )
-    }
+    $arguments = @(
+        '-m', 'pip', 'install', '--disable-pip-version-check', '--no-input',
+        '-i', 'https://pypi.tuna.tsinghua.edu.cn/simple',
+        '--extra-index-url', 'https://mirrors.aliyun.com/pypi/simple',
+        'pywebview', 'paramiko'
+    )
 
     try {
         $script:PipProc = Start-Process -FilePath $script:VenvPython -ArgumentList $arguments `
