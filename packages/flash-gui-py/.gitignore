@@ -1,0 +1,13 @@
+# 运行时生成的文件，不提交
+firmware/
+logs/
+deploy/
+state.json
+.venv/
+__pycache__/
+*.pyc
+
+# 二进制安装包不进仓库，由初始化页下载或用户手动放置
+installer/*.exe
+tools/*.zip
+tools/*/

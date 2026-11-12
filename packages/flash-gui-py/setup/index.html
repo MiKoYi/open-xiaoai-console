@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open-XiaoAI 控制台 - 初始化</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/setup.css">
+</head>
+<body class="setup-body">
+<div class="setup">
+  <header class="setup-head">
+    <h1>Open-XiaoAI 控制台</h1>
+    <p>首次运行需要准备运行环境。缺少的项点右侧按钮安装，准备好后点「启动控制台」。</p>
+  </header>
+
+  <section class="card setup-card">
+    <div class="setup-row">
+      <span class="dot" id="python-dot"></span>
+      <div class="setup-info">
+        <div class="setup-title">Python 3.9+</div>
+        <div class="hint" id="python-detail">正在检测…</div>
+        <div class="hint setup-path hidden" id="python-path">
+          安装位置：<span id="python-dir"></span>
+          <a href="#" class="inline-link" id="btn-python-dir">更改</a>
+        </div>
+      </div>
+      <div class="setup-inline">
+        <button class="btn" id="btn-python">自动安装</button>
+        <button class="btn" id="btn-pick-python">手动选择</button>
+      </div>
+    </div>
+
+    <div class="setup-row">
+      <span class="dot" id="deps-dot"></span>
+      <div class="setup-info">
+        <div class="setup-title">界面依赖（pywebview / paramiko）</div>
+        <div class="hint" id="deps-detail">正在检测…</div>
+      </div>
+      <div class="setup-inline">
+        <button class="btn" id="btn-deps">安装依赖</button>
+      </div>
+    </div>
+
+    <div class="setup-row">
+      <span class="dot" id="tool-dot"></span>
+      <div class="setup-info">
+        <div class="setup-title">刷机工具（可选）</div>
+        <div class="hint" id="tool-detail">正在检测…</div>
+      </div>
+      <div class="setup-inline">
+        <button class="btn" id="btn-tool-download">下载工具</button>
+        <button class="btn" id="btn-tools">打开目录</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card setup-card">
+    <div class="card-head">安装日志</div>
+    <pre class="log setup-log" id="log">等待操作…</pre>
+  </section>
+
+  <div class="setup-footer">
+    <span class="hint" id="setup-status"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="btn-refresh">重新检测</button>
+    <button class="btn" id="btn-exit">退出</button>
+    <button class="btn primary" id="btn-launch" disabled>启动控制台</button>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

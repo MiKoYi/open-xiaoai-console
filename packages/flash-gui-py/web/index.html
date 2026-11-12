@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open-XiaoAI 控制台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-title">Open-XiaoAI</div>
+      <div class="brand-sub">控制台</div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" data-view="flash"><span class="nav-icon">◈</span>刷机</button>
+      <button class="nav-item" data-view="deploy"><span class="nav-icon">◎</span>部署</button>
+    </nav>
+    <div class="sidebar-foot">
+      <a id="link-github" class="side-link" target="_blank" rel="noreferrer">项目文档 ↗</a>
+      <div class="side-version">v1.0 · MIT</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <section id="view-flash" class="view">
+      <header class="page-head">
+        <h1>刷机</h1>
+        <p>给音箱刷入补丁固件，开启 SSH。支持 LX06 和 OH2P。</p>
+      </header>
+
+      <section class="card">
+        <div class="card-head">选择机型</div>
+        <div class="seg" id="model-seg"></div>
+        <div class="hint" id="model-tip"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">补丁固件</div>
+        <div class="row">
+          <input id="image-path" readonly placeholder="还没有选择固件">
+          <button class="btn" data-pick="image">浏览…</button>
+          <button class="btn" id="btn-download">下载官方固件</button>
+        </div>
+        <div class="hint" id="image-info"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">Amlogic 刷机工具</div>
+        <div class="row">
+          <input id="exe-path" placeholder="update.exe 路径（内置工具会自动填入）">
+          <button class="btn" data-pick="exe">浏览…</button>
+          <button class="btn" id="btn-find-exe">自动查找</button>
+        </div>
+        <div class="hint" id="exe-info"></div>
+      </section>
+
+      <div class="actions">
+        <button class="btn primary lg" id="btn-flash">开始刷机</button>
+        <button class="btn" id="btn-restore">恢复原厂系统</button>
+        <button class="btn" id="btn-identify">识别设备</button>
+        <button class="btn" id="btn-driver">安装 USB 驱动</button>
+        <button class="btn" id="btn-tutorial">查看教程</button>
+      </div>
+    </section>
+
+    <section id="view-deploy" class="view hidden">
+      <header class="page-head">
+        <h1>部署</h1>
+        <p>把服务端部署到本机 Docker 或远程服务器，音箱通过 Client 连接它。</p>
+      </header>
+
+      <div class="deploy">
+        <div class="modes" id="mode-list"></div>
+        <section class="card detail">
+          <div class="detail-head">
+            <h2 id="mode-title">选择接入方式</h2>
+            <a id="mode-doc" class="link" target="_blank" rel="noreferrer">查看文档</a>
+          </div>
+          <p class="tagline" id="mode-tagline"></p>
+          <div class="note hidden" id="mode-note"></div>
+          <div class="fields" id="fields"></div>
+
+          <details class="advanced" id="advanced">
+            <summary>高级选项（部署方式 / 内存 / 下载源 / 镜像加速）</summary>
+            <div class="options">
+              <div class="opt">
+                <label>部署方式</label>
+                <div class="seg small" id="method-seg"></div>
+              </div>
+              <div class="opt">
+                <label>内存上限</label>
+                <input id="memory" placeholder="如 512m，留空不限">
+              </div>
+              <div class="opt">
+                <label>源码下载源</label>
+                <select id="mirror"></select>
+              </div>
+              <div class="opt">
+                <label>自定义前缀</label>
+                <input id="mirror-prefix" placeholder="https://ghfast.top/">
+              </div>
+              <div class="opt wide">
+                <label>Docker 镜像加速（可选）</label>
+                <input id="image-prefix" placeholder="docker.m.daocloud.io/">
+              </div>
+            </div>
+          </details>
+
+          <div class="row end">
+            <label class="port">端口 <input id="port" value="4399" inputmode="numeric"></label>
+            <button class="btn primary" id="btn-deploy-local">部署到本机</button>
+            <button class="btn" id="btn-deploy-remote">部署到远程</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <div class="statusline">
+      <span id="status-text">准备就绪</span>
+      <span id="busy" class="busy hidden">执行中…</span>
+    </div>
+    <pre class="log" id="log" aria-live="polite"></pre>
+
+    <footer class="statusbar">
+      <span class="dot" id="svc-dot"></span>
+      <span class="status-label">服务端</span>
+      <b id="svc-text">未部署</b>
+      <span class="muted" id="svc-url"></span>
+      <span class="spacer"></span>
+      <span class="dot" id="spk-dot"></span>
+      <span class="status-label">音箱</span>
+      <b id="spk-text">未配置</b>
+      <input id="speaker-ip" placeholder="音箱 IP">
+      <button class="btn tiny" id="btn-check">检测</button>
+    </footer>
+  </main>
+</div>
+
+<div class="modal hidden" id="ssh-modal">
+  <div class="modal-card">
+    <h3>远程服务器</h3>
+    <p class="hint" id="ssh-hint">需要服务器已安装 Docker，并且可以用 SSH 登录。</p>
+    <div class="form-grid">
+      <label>主机地址<input id="ssh-host" placeholder="192.168.1.10"></label>
+      <label>SSH 端口<input id="ssh-port" value="22" inputmode="numeric"></label>
+      <label>用户名<input id="ssh-user" value="root"></label>
+      <label>认证方式
+        <select id="ssh-auth">
+          <option value="password">密码</option>
+          <option value="key">私钥</option>
+        </select>
+      </label>
+      <label class="wide" id="ssh-password-row">密码<input id="ssh-password" type="password"></label>
+      <label class="wide hidden" id="ssh-key-row">私钥文件
+        <span class="row"><input id="ssh-key" placeholder="C:\\Users\\...\\id_rsa"><button class="btn" id="btn-pick-key">选择…</button></span>
+      </label>
+    </div>
+    <div class="row end">
+      <button class="btn" id="ssh-cancel">取消</button>
+      <button class="btn primary" id="ssh-confirm">连接并部署</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
