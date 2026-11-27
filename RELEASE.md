@@ -7,8 +7,6 @@
 | XiaoAI-Plus 部署包 | `v0.1.0` | `oh2p.tar.gz` + SHA256 + 第三方声明 |
 | OH2P 1.60.2 补丁固件 | `firmware-oh2p-1.60.2` | `OH2P_1.60.2_patched.squashfs` + SHA256 + 固件声明 |
 
-**不发布官方原版固件**（`OH2P_1.60.2.squashfs`），官方固件请自行从小米 OTA 获取。
-
 ## 1. 部署包 v0.1.0
 
 - 文件：`oh2p.tar.gz`
@@ -22,5 +20,5 @@
 - 文件：`OH2P_1.60.2_patched.squashfs`
 - SHA256：`b235f13be02aa27200f00a67a196570738f1ba984ca8a535a8ffdfbf0b50a9bd`
 - 适用：Xiaomi 智能音箱 Pro（OH2P），系统版本 **1.60.2**
-- 说明：基于小米官方固件修改，**仅补丁版，不含官方原版**
-- 风险与许可：见 [docs/firmware-release.md](docs/firmware-release.md)。补丁固件版权归小米，仅限已拥有该设备的用户个人刷机使用，请勿商用或再分发；刷机有变砖风险。
+- 说明：基于小米官方固件修改的补丁版本
+- 风险与许可：补丁固件基于小米官方固件修改，相关权利归小米；仅供学习研究和个人测试，请遵守当地法律及设备用户协议；刷机有风险，后果由使用者自行承担。详见 [docs/firmware-release.md](docs/firmware-release.md)。
