@@ -23,6 +23,7 @@
 - **Windows 控制台 v1.0.0**：[Releases · v1.0.0](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/v1.0.0)（`OpenXiaoAIConsole.exe`，单文件）
 - **XiaoAI-Plus 部署包**：[Releases · v0.1.0](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/v0.1.0)（`oh2p.tar.gz`）
 - **OH2P 1.60.2 补丁固件**：[Releases · firmware-oh2p-1.60.2](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.60.2)
+- **OH2P 1.62.2 补丁固件**：[Releases · firmware-oh2p-1.62.2](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.62.2)
 
 ## 功能
 
@@ -54,9 +55,9 @@
 | 机型 | 固件版本 |
 |---|---|
 | 小爱音箱 Pro（LX06） | 1.94.13 |
-| Xiaomi 智能音箱 Pro（OH2P） | 1.60.2 |
+| Xiaomi 智能音箱 Pro（OH2P） | 1.60.2 / 1.62.2 |
 
-> OH2P 1.60.2 补丁固件见 [固件 Release](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.60.2)；控制台会优先使用 `packages/flash-gui-py/firmware/OH2P_1.60.2_patched.squashfs` 本地文件，也可以点「浏览」手动选择。
+> OH2P 补丁固件见 [1.60.2 Release](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.60.2) 和 [1.62.2 Release](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.62.2)；控制台会优先使用 `firmware/` 下的本地文件，也可以点「浏览」手动选择。
 
 其他型号请勿使用，刷错固件有变砖风险。
 

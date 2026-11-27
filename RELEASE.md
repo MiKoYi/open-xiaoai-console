@@ -7,6 +7,7 @@
 | Windows 控制台 | `v1.0.0` | `OpenXiaoAIConsole.exe` + SHA256 |
 | XiaoAI-Plus 部署包 | `v0.1.0` | `oh2p.tar.gz` + SHA256 + 第三方声明 |
 | OH2P 1.60.2 补丁固件 | `firmware-oh2p-1.60.2` | `OH2P_1.60.2_patched.squashfs` + SHA256 + 固件声明 |
+| OH2P 1.62.2 补丁固件 | `firmware-oh2p-1.62.2` | `OH2P_1.62.2_patched.squashfs` + SHA256 + 固件声明 |
 
 ## 1. Windows 控制台 v1.0.0
 
@@ -32,3 +33,11 @@
 - 适用：Xiaomi 智能音箱 Pro（OH2P），系统版本 **1.60.2**
 - 说明：基于小米官方固件修改的补丁版本
 - 风险与许可：补丁固件基于小米官方固件修改，相关权利归小米；仅供学习研究和个人测试，请遵守当地法律及设备用户协议；刷机有风险，后果由使用者自行承担。详见 [docs/firmware-release.md](docs/firmware-release.md)。
+
+## 4. OH2P 1.62.2 补丁固件
+
+- 文件：`OH2P_1.62.2_patched.squashfs`
+- SHA256：`7c1f66379355cb7cd10eb5faeac4ffe80ca3e8efd00db23cfa2880c830655121`
+- 适用：Xiaomi 智能音箱 Pro（OH2P），系统版本 **1.62.2**
+- 说明：基于小米官方固件修改的补丁版本
+- 风险与许可：补丁固件基于小米官方固件修改，相关权利归小米；仅供学习研究和个人测试，请遵守当地法律及设备用户协议；刷机有风险，后果由使用者自行承担。详见 [docs/firmware-release-1.62.2.md](docs/firmware-release-1.62.2.md)。
