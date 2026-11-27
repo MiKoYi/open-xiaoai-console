@@ -20,6 +20,7 @@
 
 ## 下载
 
+- **Windows 控制台 v1.0.0**：[Releases · v1.0.0](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/v1.0.0)（`OpenXiaoAIConsole.exe`，单文件）
 - **XiaoAI-Plus 部署包**：[Releases · v0.1.0](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/v0.1.0)（`oh2p.tar.gz`）
 - **OH2P 1.60.2 补丁固件**：[Releases · firmware-oh2p-1.60.2](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.60.2)
 

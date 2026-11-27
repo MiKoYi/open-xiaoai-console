@@ -13,6 +13,8 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 
 ![配置页](./docs/screenshot-config.png)
 
+> 打包成 Windows 单文件 exe：见 [docs/build-exe.md](docs/build-exe.md)。
+
 ## 一键启动
 
 双击 **`启动控制台.cmd`**：

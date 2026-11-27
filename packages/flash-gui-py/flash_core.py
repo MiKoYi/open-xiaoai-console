@@ -223,6 +223,8 @@ SW_HIDE = 0
 ERROR_CANCELLED = 1223
 WAIT_OBJECT_0 = 0
 FLASH_WORKER = Path(__file__).with_name("flash_worker.py")
+if getattr(sys, "frozen", False):
+    FLASH_WORKER = Path(sys.executable)
 
 
 class _ShellExecuteInfo(ctypes.Structure):
@@ -258,8 +260,8 @@ def _start_elevated_worker(events: Path, action: str, update_exe: str, image_pat
     if not FLASH_WORKER.is_file():
         raise FlashError("缺少 flash_worker.py，无法以管理员权限运行刷机工具。")
     parameters = subprocess.list2cmdline(
-        [
-            str(FLASH_WORKER),
+        (["--flash-worker"] if getattr(sys, "frozen", False) else [str(FLASH_WORKER)])
+        + [
             "--action", action,
             "--exe", str(update_exe),
             "--events", str(events),

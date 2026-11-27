@@ -180,11 +180,17 @@ def bring_to_front(window, icon_path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if "--flash-worker" in argv:
+        argv.remove("--flash-worker")
+        import flash_worker
+
+        return flash_worker.main(argv)
     parser = argparse.ArgumentParser(description="Open-XiaoAI 控制台")
     parser.add_argument("--browser", action="store_true", help="强制用系统浏览器打开")
     parser.add_argument("--selftest", action="store_true", help="只启动服务并检查接口")
     parser.add_argument("--debug", action="store_true", help="打开 pywebview 调试")
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+    args = parser.parse_args(argv)
 
     set_taskbar_identity()
     httpd, _hub = serve_background(0)
