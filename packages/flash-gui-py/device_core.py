@@ -31,11 +31,11 @@ XP_INSTALL_URL = "https://fastly.jsdelivr.net/gh/kslr/xiaoai-plus@main/install.s
 XP_BOOT_URL = "https://fastly.jsdelivr.net/gh/kslr/xiaoai-plus@main/boot.sh"
 XP_ARCHIVE_REMOTE = "/tmp/xiaoai-plus-oh2p.tar.gz"
 XP_ARCHIVE_URLS = (
-    ("GitHub Release", "https://github.com/rolazd/xiaoai-doubao/releases/download/v0.1.0/xiaoai-doubao-oh2p-v0.1.0.tar.gz"),
-    ("ghfast 镜像", "https://ghfast.top/https://github.com/rolazd/xiaoai-doubao/releases/download/v0.1.0/xiaoai-doubao-oh2p-v0.1.0.tar.gz"),
-    ("ghproxy 镜像", "https://ghproxy.net/https://github.com/rolazd/xiaoai-doubao/releases/download/v0.1.0/xiaoai-doubao-oh2p-v0.1.0.tar.gz"),
+    ("GitHub Release", "https://github.com/MiKoYi/open-xiaoai-console/releases/download/v0.1.0/oh2p.tar.gz"),
+    ("ghfast 镜像", "https://ghfast.top/https://github.com/MiKoYi/open-xiaoai-console/releases/download/v0.1.0/oh2p.tar.gz"),
+    ("ghproxy 镜像", "https://ghproxy.net/https://github.com/MiKoYi/open-xiaoai-console/releases/download/v0.1.0/oh2p.tar.gz"),
 )
-XP_ARCHIVE_SHA256 = "34629b02148219eed88eb1662b50c13ff7c221b176a3fb0231eec38c770704d5"
+XP_ARCHIVE_SHA256 = "3bfa7b55ac8cd2b72e76a6a86a29c3caec95a8fde6ff2d279747d104e32e969d"
 XP_ARCHIVE_MIN_SIZE = 1_000_000
 XP_WAKE_DEFAULT = "豆包豆包"
 XP_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "xiaoai-plus"

@@ -63,8 +63,8 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 部署页分两个标签，并会按当前机型提示支持范围：
 
 - **Home Mate（小瑞）**：支持 LX06 / Echo Dot 2 / Android 网关，**不支持 OH2P**。通过 SSH 在 Docker 主机上部署 `ghcr.io/yes999zc/home-mate:latest`（host 网络、8930 控制台），也可以只填地址连接已运行的核心；Home Mate 自带的 Vue 3 控制台会直接嵌在页面里（被拒绝嵌入时可「新窗口打开」）。
-- **XiaoAI-Plus**：**仅支持 OH2P**。音箱端程序基于 **xiaoai-doubao v0.1.0**（`rolazd/xiaoai-doubao`），原生支持 API Key 鉴权、协议 `o2` / `v3`、守护进程和退出词；配置在「配置 → XiaoAI-Plus」。
-- 安装包用 `xiaoai-doubao-oh2p-v0.1.0.tar.gz`：控制台下载后自动补齐 KWS 模型、词表和 CA，再上传到音箱本地解压安装，**音箱不需要外网**；也可以自己选离线包。旧的 `app_id / access_token / secret_key` 已完全移除。
+- **XiaoAI-Plus**：**仅支持 OH2P**。音箱端程序基于 **xiaoai-plus 源码**（上游 `kslr/xiaoai-plus` + 本项目豆包改造），原生支持 API Key 鉴权、协议 `o2` / `v3`、守护进程和退出词；配置在「配置 → XiaoAI-Plus」。
+- 安装包用本项目 Release 的 [`oh2p.tar.gz`](https://github.com/MiKoYi/open-xiaoai-console/releases/download/v0.1.0/oh2p.tar.gz)：控制台下载后自动补齐 KWS 模型、词表和 CA，再上传到音箱本地解压安装，**音箱不需要外网**；也可以自己选离线包。旧的 `app_id / access_token / secret_key` 已完全移除。
 
 ### 配置
 

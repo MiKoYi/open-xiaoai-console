@@ -18,6 +18,12 @@
 
 ![配置页](packages/flash-gui-py/docs/screenshot-config.png)
 
+## 下载
+
+- **XiaoAI-Plus 部署包**：[Releases · v0.1.0](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/v0.1.0)（`oh2p.tar.gz`）
+- **OH2P 1.60.2 补丁固件**：[Releases · firmware-oh2p-1.60.2](https://github.com/MiKoYi/open-xiaoai-console/releases/tag/firmware-oh2p-1.60.2)
+- **不提供官方原版固件**，请自行从小米 OTA 获取。补丁固件仅限已拥有设备的用户个人使用，详见 [固件说明](docs/firmware-release.md)。
+
 ## 功能
 
 - **刷机**：官方固件下载 + SHA256 校验、自动抓上电窗口、`bulkcmd` 重试、错误翻译、一键恢复原厂
