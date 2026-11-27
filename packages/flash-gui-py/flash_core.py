@@ -80,7 +80,7 @@ MODELS = {
         name="Xiaomi 智能音箱 Pro（OH2P）",
         version="1.60.2",
         filename="OH2P_1.60.2_patched.squashfs",
-        url=f"{RELEASE_BASE}/OH2P_1.60.2/OH2P_1.60.2_patched.squashfs",
+        url="https://github.com/MiKoYi/open-xiaoai-console/releases/download/firmware-oh2p-1.60.2/OH2P_1.60.2_patched.squashfs",
         sha256="b235f13be02aa27200f00a67a196570738f1ba984ca8a535a8ffdfbf0b50a9bd",
         connection="无需拆机，直接用 Type-C 数据线连接音箱底部接口",
     ),
