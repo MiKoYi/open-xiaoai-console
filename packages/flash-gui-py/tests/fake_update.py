@@ -2,7 +2,7 @@
 
 行为由环境变量控制：
     FAKE_IDENTIFY_AFTER  第几次 identify 开始成功（默认 2）
-    FAKE_MODE            fail-bulk / fail-partition
+    FAKE_MODE            fail-bulk / fail-partition / usb-error
 """
 
 import os
@@ -31,6 +31,12 @@ def main() -> int:
         need = int(os.environ.get("FAKE_IDENTIFY_AFTER", "2"))
 
         print("AmlUsbIdentifyHost")
+        if mode == "usb-error":
+            print(
+                "IOCTL_IDENTIFY_HOST_Handler ret=-5 error_msg=libusb0-dll:err [control_msg] "
+                "sending control message failed, win error: A device attached to the system is not functioning."
+            )
+            return 1
         if attempts < need:
             print("can not find device")
             print("ERR: AmlUsbIdentifyHost failed!", file=sys.stderr)

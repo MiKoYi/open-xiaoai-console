@@ -4,15 +4,15 @@ const S = {
   data: null,
   settings: {},
   model: "LX06",
-  mode: "xiaozhi",
-  values: {},
-  method: "image",
   busy: false,
   lastAction: "",
   ssh: null,
   env: null,
   ready: false,
-  sshPurpose: "deploy",
+  deployTab: "hm",
+  configTab: "hm",
+  hmUrl: "",
+  xpValues: {},
 };
 
 window.addEventListener("error", (event) => {
@@ -64,13 +64,39 @@ function log(text, level = "info") {
 
 function setStatus(text) { $("#status-text").textContent = text; }
 
+async function copyLog() {
+  const text = ($("#log").textContent || "").trim();
+  if (!text) return toast("日志还是空的");
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("日志已复制到剪贴板");
+    return;
+  } catch (_) { /* 回退到 execCommand */ }
+  const node = $("#log");
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try {
+    const ok = document.execCommand("copy");
+    toast(ok ? "日志已复制到剪贴板" : "复制失败，请手动选择日志", !ok);
+  } catch (_) {
+    toast("复制失败，请手动选择日志", true);
+  } finally {
+    selection.removeAllRanges();
+  }
+}
+
 function setBusy(busy) {
   S.busy = busy;
   $("#busy").classList.toggle("hidden", !busy);
   const ids = [
     "btn-flash", "btn-restore", "btn-identify", "btn-download-patched",
-    "btn-download-official", "btn-patch", "btn-deploy-local", "btn-deploy-remote",
-    "btn-find-exe", "btn-driver",
+    "btn-download-official", "btn-patch", "btn-find-exe", "btn-driver",
+    "btn-hm-connect", "btn-hm-open", "btn-hm-deploy", "btn-hm-status",
+    "btn-xp-status", "btn-xp-install", "btn-xp-autostart", "btn-xp-save",
+    "btn-xp-start", "btn-xp-stop", "btn-xp-restart", "btn-xp-logs", "btn-xp-offline",
   ];
   ids.forEach((id) => { const node = document.getElementById(id); if (node) node.disabled = busy; });
   $$("[data-pick]").forEach((node) => { node.disabled = busy; });
@@ -132,16 +158,27 @@ function askChoice(title, message, choices) {
 let saveTimer = null;
 function saveSettings() {
   S.settings.model = S.model;
-  S.settings.mode = S.mode;
-  S.settings.method = S.method;
-  S.settings.memory = $("#memory").value.trim();
-  S.settings.mirror = $("#mirror").value;
-  S.settings.mirror_prefix = $("#mirror-prefix").value.trim();
-  S.settings.port = $("#port").value.trim();
   S.settings.image = $("#image-path").value;
   S.settings.exe = $("#exe-path").value;
   S.settings.speaker_ip = $("#speaker-ip").value.trim();
-  S.settings.values = S.values;
+  S.settings.deploy_tab = S.deployTab;
+  S.settings.config_tab = S.configTab;
+  S.settings.hm_url = $("#hm-url").value.trim();
+  S.settings.hm_host = $("#hm-host").value.trim();
+  S.settings.hm_port = $("#hm-port").value.trim();
+  S.settings.hm_user = $("#hm-user").value.trim();
+  S.settings.hm_data = $("#hm-data").value.trim();
+  S.settings.hm_node = $("#hm-node").value.trim();
+  S.settings.hm_sudo = $("#hm-sudo").checked;
+  S.settings.hm_pass = $("#hm-pass").value;
+  S.settings.hm_sudo_pass = $("#hm-sudo-pass").value;
+  S.settings.xp_host = $("#xp-host").value.trim();
+  S.settings.xp_port = $("#xp-port").value.trim();
+  S.settings.xp_user = $("#xp-user").value.trim();
+  S.settings.xp_pass = $("#xp-pass").value;
+  S.settings.xp_archive = $("#xp-archive").value.trim();
+  S.settings.xp_wake_word = $("#xp-wake-word").value.trim();
+  S.settings.xp_values = S.xpValues;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     api("/api/settings", { method: "POST", body: S.settings }).catch(() => {});
@@ -161,6 +198,7 @@ function renderModels() {
       renderModels();
       updateModelTip();
       updateImageInfo();
+      updateDeployWarning();
       saveSettings();
     });
     box.appendChild(button);
@@ -193,167 +231,212 @@ function updateImageInfo() {
 
 /* ---------------- 部署模式 ---------------- */
 
-function renderModes() {
-  const box = $("#mode-list");
-  box.innerHTML = "";
-  S.data.modes.forEach((mode) => {
-    const card = el("button", "mode" + (mode.key === S.mode ? " active" : ""));
-    card.type = "button";
-    card.appendChild(el("div", "mode-title", mode.title));
-    card.appendChild(el("div", "mode-sub", mode.tagline));
-    if (!mode.deployable) card.appendChild(el("span", "mode-tag", "源码运行"));
-    card.addEventListener("click", () => selectMode(mode.key));
-    box.appendChild(card);
+/* ---------------- 部署：Home Mate / XiaoAI-Plus ---------------- */
+
+function parseJson(text) {
+  try { return JSON.parse(text || "{}"); } catch (_) { return {}; }
+}
+
+const DEPLOY_SUPPORT = {
+  hm: {
+    models: ["LX06"],
+    text: "Home Mate 支持小爱音箱 Pro（LX06）、Echo Dot 2、Android 网关，不支持 OH2P",
+  },
+  xp: {
+    models: ["OH2P"],
+    text: "XiaoAI-Plus 仅支持 Xiaomi 智能音箱 Pro（OH2P），LX06 等其它机型不支持",
+  },
+};
+
+function switchDeployTab(tab) {
+  S.deployTab = tab === "xp" ? "xp" : "hm";
+  $$("#deploy-tabs .tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === S.deployTab);
   });
-}
-
-function currentMode() {
-  return S.data.modes.find((mode) => mode.key === S.mode) || S.data.modes[0];
-}
-
-function ensureValues(mode) {
-  if (!S.values[mode.key]) {
-    const values = {};
-    mode.fields.forEach((field) => { values[field.key] = field.default || ""; });
-    S.values[mode.key] = values;
-  }
-  return S.values[mode.key];
-}
-
-function selectMode(key) {
-  S.mode = key;
-  const mode = currentMode();
-  renderModes();
-  $("#mode-title").textContent = mode.title;
-  $("#mode-tagline").textContent = mode.tagline;
-  $("#mode-doc").href = `${S.data.github_url}/blob/main/examples/${mode.key}/README.md`;
-  const note = $("#mode-note");
-  if (mode.note) {
-    note.textContent = mode.note;
-    note.classList.remove("hidden");
-  } else {
-    note.classList.add("hidden");
-  }
-  renderFields(mode);
-  $("#btn-deploy-local").disabled = !mode.deployable;
-  $("#btn-deploy-remote").disabled = !mode.deployable;
+  $("#tab-hm").classList.toggle("hidden", S.deployTab !== "hm");
+  $("#tab-xp").classList.toggle("hidden", S.deployTab !== "xp");
+  updateDeployWarning();
   saveSettings();
 }
 
-function renderFields(mode) {
-  const box = $("#fields");
-  box.innerHTML = "";
-  const values = ensureValues(mode);
-  mode.fields.forEach((field) => {
-    const wrap = el("div", "field");
-    const label = el("label", "", field.label + (field.required ? " *" : ""));
-    const current = values[field.key] ?? "";
+function deploySupportWarning(tab = S.deployTab) {
+  const support = DEPLOY_SUPPORT[tab];
+  if (!support || support.models.includes(S.model)) return "";
+  const model = S.data.models.find((item) => item.key === S.model);
+  const name = model ? model.name : S.model;
+  return `当前在刷机页选择的机型是「${name}」，${support.text}。`;
+}
 
+function updateDeployWarning() {
+  const node = $("#deploy-warning");
+  if (!node) return;
+  const text = deploySupportWarning();
+  node.textContent = text ? `⚠️ ${text}` : "";
+  node.classList.toggle("hidden", !text);
+}
+
+async function confirmUnsupported(tab = S.deployTab) {
+  const warning = deploySupportWarning(tab);
+  if (!warning) return true;
+  return askConfirm(`${warning}\n\n继续操作可能部署后无法使用，仍要继续吗？`, {
+    title: "机型可能不支持",
+    okText: "仍然继续",
+  });
+}
+
+function switchConfigTab(tab) {
+  S.configTab = tab === "xp" ? "xp" : "hm";
+  $$("#config-tabs .tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.ctab === S.configTab);
+  });
+  $("#ctab-hm").classList.toggle("hidden", S.configTab !== "hm");
+  $("#ctab-xp").classList.toggle("hidden", S.configTab !== "xp");
+  saveSettings();
+}
+
+function normalizeUrl(value) {
+  let url = String(value || "").trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) url = `http://${url}`;
+  return url.replace(/\/+$/, "");
+}
+
+function sshParams(prefix) {
+  return {
+    host: $(`#${prefix}-host`).value.trim(),
+    port: Number($(`#${prefix}-port`).value || 22),
+    user: $(`#${prefix}-user`).value.trim() || "root",
+    password: $(`#${prefix}-pass`).value,
+    key_path: "",
+  };
+}
+
+function connectHomeMate() {
+  const url = normalizeUrl($("#hm-url").value);
+  if (!url) return toast("请填写 Home Mate 控制台地址", true);
+  $("#hm-url").value = url;
+  S.hmUrl = url;
+  $("#hm-frame").src = url;
+  $("#hm-hint").className = "hint";
+  $("#hm-hint").textContent = `已加载 ${url}；如果下方空白或提示拒绝，请点「新窗口打开」。`;
+  saveSettings();
+}
+
+async function deployHomeMate() {
+  const ssh = sshParams("hm");
+  if (!ssh.host) return toast("请填写主机地址", true);
+  if (!ssh.password) return toast("请填写 SSH 密码", true);
+  if (!(await confirmUnsupported("hm"))) return;
+  const useSudo = $("#hm-sudo").checked;
+  start("hm_deploy", {
+    ssh,
+    data_dir: $("#hm-data").value.trim() || "/opt/home-mate/data",
+    node_id: $("#hm-node").value.trim() || "nas-core-1",
+    use_sudo: useSudo,
+    sudo_password: $("#hm-sudo-pass").value || (useSudo ? ssh.password : ""),
+  });
+}
+
+function statusHomeMate() {
+  const ssh = sshParams("hm");
+  if (!ssh.host) return toast("请填写主机地址", true);
+  start("hm_status", {
+    ssh,
+    use_sudo: $("#hm-sudo").checked,
+    sudo_password: $("#hm-sudo-pass").value || ssh.password,
+  });
+}
+
+function renderXpFields(values = null) {
+  const box = $("#xp-fields");
+  box.innerHTML = "";
+  if (values) S.xpValues = { ...values };
+  const saved = S.settings.xp_values || {};
+  (S.data.xp_fields || []).forEach((field) => {
+    const key = field.key;
+    if (S.xpValues[key] === undefined) {
+      S.xpValues[key] = saved[key] !== undefined ? saved[key] : (field.default || "");
+    }
+    const wrap = el("div", "field");
+    if (field.multiline) wrap.classList.add("span-all");
+    wrap.appendChild(el("label", "", field.label));
     if (field.multiline) {
       const input = el("textarea");
-      input.value = current;
-      input.addEventListener("input", () => {
-        values[field.key] = input.value;
-        saveSettings();
-      });
-      wrap.appendChild(label);
+      input.value = S.xpValues[key];
+      input.addEventListener("input", () => { S.xpValues[key] = input.value; saveSettings(); });
       wrap.appendChild(input);
-    } else if (field.options && field.options.length) {
-      const select = el("select");
-      field.options.forEach((option) => {
-        const node = el("option", "", option);
-        node.value = option;
-        select.appendChild(node);
-      });
-      const customOption = el("option", "", "自定义…");
-      customOption.value = "__custom__";
-      select.appendChild(customOption);
-
-      const customInput = el("input");
-      customInput.placeholder = field.placeholder || "自定义";
-      const known = field.options.includes(current);
-      select.value = known ? current : "__custom__";
-      customInput.value = known ? "" : current;
-      customInput.classList.toggle("hidden", known);
-
-      select.addEventListener("change", () => {
-        if (select.value === "__custom__") {
-          values[field.key] = customInput.value;
-          customInput.classList.remove("hidden");
-          customInput.focus();
-        } else {
-          values[field.key] = select.value;
-          customInput.classList.add("hidden");
-        }
-        saveSettings();
-      });
-      customInput.addEventListener("input", () => {
-        values[field.key] = customInput.value;
-        saveSettings();
-      });
-
-      wrap.appendChild(label);
-      wrap.appendChild(select);
-      wrap.appendChild(customInput);
     } else {
       const input = el("input");
       if (field.secret) input.type = "password";
-      input.value = current;
-      input.placeholder = field.placeholder || "";
-      input.addEventListener("input", () => {
-        values[field.key] = input.value;
-        saveSettings();
-      });
-      wrap.appendChild(label);
+      input.value = S.xpValues[key];
+      input.addEventListener("input", () => { S.xpValues[key] = input.value; saveSettings(); });
       wrap.appendChild(input);
     }
-    if (field.help) wrap.appendChild(el("div", "hint", field.help));
     box.appendChild(wrap);
   });
 }
 
-/* ---------------- 选项 ---------------- */
+function xpAction(action, extra = {}) {
+  const ssh = sshParams("xp");
+  if (!ssh.host) { toast("请填写音箱地址", true); return false; }
+  start(action, { ssh, ...extra });
+  return true;
+}
 
-function renderOptions() {
-  const methodBox = $("#method-seg");
-  methodBox.innerHTML = "";
-  [["image", "官方镜像（最快）"], ["source", "源码构建（ARM / 小内存）"]].forEach(([value, label]) => {
-    const button = el("button", value === S.method ? "active" : "", label);
-    button.type = "button";
-    button.addEventListener("click", () => {
-      S.method = value;
-      renderOptions();
-      saveSettings();
-    });
-    methodBox.appendChild(button);
-  });
-  const methodHint = $("#method-hint");
-  if (methodHint) {
-    methodHint.textContent = S.method === "source"
-      ? "源码构建使用精简 Dockerfile；容器内存按「内存上限」设置，Node 堆自动设为约一半。"
-      : "官方镜像体积较大，内存受限时建议改用源码构建。";
+function applyXpStatus(info) {
+  const parts = [];
+  parts.push(info.installed ? "已安装" : "未安装");
+  parts.push(info.running ? "运行中" : "未运行");
+  if (info.self_start) parts.push("开机自启");
+  if (info.disk_kb) parts.push(`/data 剩余 ${Math.round(info.disk_kb / 1024)} MB`);
+  if (info.wake_word) {
+    parts.push(`唤醒词：${info.wake_word}`);
+    if (!$("#xp-wake-word").value.trim()) $("#xp-wake-word").value = info.wake_word;
   }
+  const hint = $("#xp-hint");
+  hint.className = `hint ${info.installed && info.running ? "ok" : info.installed ? "warn" : ""}`;
+  hint.textContent = parts.join(" · ");
+}
 
-  const mirror = $("#mirror");
-  mirror.innerHTML = "";
-  S.data.mirrors.forEach((item) => {
-    const option = el("option", "", item.label);
-    option.value = item.key;
-    mirror.appendChild(option);
-  });
-  mirror.value = S.settings.mirror || "auto";
-  mirror.addEventListener("change", saveSettings);
+async function saveXpConfig() {
+  const values = { ...S.xpValues };
+  if (!String(values.api_key || "").trim()) {
+    toast("请填写 API Key（火山引擎豆包语音控制台获取）", true);
+    return;
+  }
+  const wakeWord = $("#xp-wake-word").value.trim();
+  if (!wakeWord) {
+    toast("请填写唤醒词", true);
+    return;
+  }
+  if (!(await confirmUnsupported("xp"))) return;
+  xpAction("xp_save", { values, wake_word: wakeWord, restart: true });
 }
 
 function applySettings() {
   const st = S.settings;
-  $("#memory").value = st.memory || "";
-  $("#mirror-prefix").value = st.mirror_prefix || "";
-  $("#port").value = st.port || S.data.defaults.port;
   $("#speaker-ip").value = st.speaker_ip || "";
   $("#image-path").value = st.image || "";
   $("#exe-path").value = st.exe || "";
-  S.method = st.method || "image";
+
+  S.deployTab = st.deploy_tab === "xp" ? "xp" : "hm";
+  S.configTab = st.config_tab === "xp" ? "xp" : "hm";
+  $("#hm-url").value = st.hm_url || "";
+  $("#hm-host").value = st.hm_host || "";
+  $("#hm-port").value = st.hm_port || 22;
+  $("#hm-user").value = st.hm_user || "root";
+  $("#hm-data").value = st.hm_data || "/opt/home-mate/data";
+  $("#hm-node").value = st.hm_node || "nas-core-1";
+  $("#hm-sudo").checked = st.hm_sudo !== false;
+  $("#hm-sudo-row").classList.toggle("hidden", !$("#hm-sudo").checked);
+  $("#hm-pass").value = st.hm_pass || "";
+  $("#hm-sudo-pass").value = st.hm_sudo_pass || "";
+  $("#xp-host").value = st.xp_host || st.speaker_ip || "";
+  $("#xp-port").value = st.xp_port || 22;
+  $("#xp-user").value = st.xp_user || "root";
+  $("#xp-pass").value = st.xp_pass || "";
+  $("#xp-archive").value = st.xp_archive || "";
+  $("#xp-wake-word").value = st.xp_wake_word || "豆包豆包";
   updateImageInfo();
 }
 
@@ -370,14 +453,13 @@ async function boot() {
   try {
     S.settings = S.data.settings || {};
     S.model = S.settings.model || S.data.defaults.model;
-    S.mode = S.settings.mode || S.data.defaults.mode;
-    if (!S.data.modes.some((mode) => mode.key === S.mode)) S.mode = S.data.defaults.mode;
+    if (!S.data.models.some((item) => item.key === S.model)) S.model = S.data.defaults.model;
 
     applySettings();
     renderModels();
-    renderModes();
-    renderOptions();
-    selectMode(S.mode);
+    renderXpFields();
+    switchDeployTab(S.deployTab);
+    switchConfigTab(S.configTab);
 
     if (!S.settings.exe && S.data.bundled_exe) {
       $("#exe-path").value = S.data.bundled_exe;
@@ -407,7 +489,7 @@ async function boot() {
     if (view === "setup") {
       switchView("setup");
     } else if (S.ready) {
-      switchView(view === "deploy" ? "deploy" : "flash");
+      switchView(view === "deploy" || view === "config" ? view : "flash");
     } else {
       switchView("setup");
     }
@@ -431,9 +513,16 @@ function bindUI() {
   $("#image-path").addEventListener("change", () => { updateImageInfo(); saveSettings(); });
   $("#exe-path").addEventListener("change", saveSettings);
   $("#speaker-ip").addEventListener("change", () => { saveSettings(); checkStatus(); });
-  $("#memory").addEventListener("input", saveSettings);
-  $("#mirror-prefix").addEventListener("input", saveSettings);
-  $("#port").addEventListener("input", saveSettings);
+  $("#btn-copy-log").addEventListener("click", copyLog);
+  $("#btn-clear-log").addEventListener("click", () => { $("#log").textContent = ""; });
+
+  [
+    "hm-url", "hm-host", "hm-port", "hm-user", "hm-pass", "hm-data", "hm-node",
+    "hm-sudo-pass", "xp-host", "xp-port", "xp-user", "xp-pass", "xp-archive", "xp-wake-word",
+  ].forEach((id) => {
+    const node = document.getElementById(id);
+    if (node) node.addEventListener("input", saveSettings);
+  });
 
   $("#btn-download-patched").addEventListener("click", () => start("download", { model: S.model, kind: "patched" }));
   $("#btn-download-official").addEventListener("click", () => start("download", { model: S.model, kind: "official" }));
@@ -445,8 +534,61 @@ function bindUI() {
   $("#btn-driver").addEventListener("click", () => start("install_driver", { exe: $("#exe-path").value.trim() }));
   $("#btn-tutorial").addEventListener("click", () => window.open(S.data.tutorial_url, "_blank"));
 
-  $("#btn-deploy-local").addEventListener("click", deployLocal);
-  $("#btn-deploy-remote").addEventListener("click", () => openSshModal("deploy"));
+  $$("#deploy-tabs .tab").forEach((button) => {
+    button.addEventListener("click", () => switchDeployTab(button.dataset.tab));
+  });
+  $$("#config-tabs .tab").forEach((button) => {
+    button.addEventListener("click", () => switchConfigTab(button.dataset.ctab));
+  });
+  $("#btn-hm-connect").addEventListener("click", connectHomeMate);
+  $("#btn-hm-open").addEventListener("click", () => {
+    const url = normalizeUrl($("#hm-url").value);
+    if (url) window.open(url, "_blank");
+  });
+  $("#btn-hm-deploy").addEventListener("click", deployHomeMate);
+  $("#btn-hm-status").addEventListener("click", statusHomeMate);
+  const openHmPage = (path) => {
+    const url = normalizeUrl($("#hm-url").value);
+    if (!url) return toast("请先在配置页填写 Home Mate 管理界面地址", true);
+    window.open(`${url}${path}`, "_blank");
+  };
+  $("#btn-hm-services").addEventListener("click", () => openHmPage("/services"));
+  $("#btn-hm-interaction").addEventListener("click", () => openHmPage("/interaction"));
+  $("#btn-hm-devices").addEventListener("click", () => openHmPage("/devices"));
+  $("#hm-sudo").addEventListener("change", () => {
+    $("#hm-sudo-row").classList.toggle("hidden", !$("#hm-sudo").checked);
+    saveSettings();
+  });
+  $("#btn-xp-status").addEventListener("click", () => xpAction("xp_status"));
+  $("#btn-xp-install").addEventListener("click", async () => {
+    const ok = await askConfirm(
+      "将下载并安装最新 XiaoAI-Plus 到音箱 /data/xiaoai-plus（会覆盖同名程序文件）。继续吗？",
+      { okText: "开始安装" },
+    );
+    if (!ok) return;
+    if (!(await confirmUnsupported("xp"))) return;
+    xpAction("xp_install");
+  });
+  $("#btn-xp-autostart").addEventListener("click", async () => {
+    const ok = await askConfirm(
+      "将把 boot.sh 写入音箱 /data/init.sh（旧文件备份为 init.sh.bak），开机自动启动 XiaoAI-Plus。继续吗？",
+      { okText: "写入自启" },
+    );
+    if (!ok) return;
+    if (!(await confirmUnsupported("xp"))) return;
+    xpAction("xp_autostart");
+  });
+  $("#btn-xp-offline").addEventListener("click", async () => {
+    const ssh = sshParams("xp");
+    if (!ssh.host) return toast("请填写音箱地址", true);
+    if (!(await confirmUnsupported("xp"))) return;
+    start("xp_offline", { ssh, archive: $("#xp-archive").value.trim() });
+  });
+  $("#btn-xp-save").addEventListener("click", saveXpConfig);
+  $("#btn-xp-start").addEventListener("click", () => xpAction("xp_start"));
+  $("#btn-xp-stop").addEventListener("click", () => xpAction("xp_stop"));
+  $("#btn-xp-restart").addEventListener("click", () => xpAction("xp_restart"));
+  $("#btn-xp-logs").addEventListener("click", () => xpAction("xp_logs", { lines: 120 }));
   $("#btn-check").addEventListener("click", checkStatus);
 
   $("#btn-env-refresh").addEventListener("click", loadEnv);
@@ -479,6 +621,7 @@ function switchView(view) {
   $$(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
   $("#view-flash").classList.toggle("hidden", view !== "flash");
   $("#view-deploy").classList.toggle("hidden", view !== "deploy");
+  $("#view-config").classList.toggle("hidden", view !== "config");
   $("#view-setup").classList.toggle("hidden", view !== "setup");
   if (view === "setup") loadEnv();
 }
@@ -572,6 +715,8 @@ async function pickFile(kind) {
   if (kind === "image") {
     $("#image-path").value = result.path;
     updateImageInfo();
+  } else if (kind === "archive") {
+    $("#xp-archive").value = result.path;
   } else {
     $("#exe-path").value = result.path;
     $("#exe-info").className = "hint ok";
@@ -658,63 +803,16 @@ async function startPatchFlow() {
   else if (choice === "guide") window.open(S.data.patch_guide_url, "_blank");
 }
 
-function deployParams(target, ssh = null) {
-  const mode = currentMode();
-  const port = Number($("#port").value || 4399);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    toast("端口需要是 1-65535 的数字", true);
-    return null;
-  }
-  const memory = $("#memory").value.trim();
-  if (memory && !/^\d+[mMgG]$/.test(memory)) {
-    toast("内存上限格式不对，例如 512m、1g", true);
-    return null;
-  }
-  const values = { ...ensureValues(mode) };
-  const missing = mode.fields.filter((field) => field.required && !String(values[field.key] || "").trim());
-  if (missing.length) {
-    toast(`请填写：${missing.map((field) => field.label).join("、")}`, true);
-    return null;
-  }
-  return {
-    mode: mode.key,
-    values,
-    port,
-    method: S.method,
-    memory,
-    mirror: $("#mirror").value,
-    mirror_prefix: $("#mirror-prefix").value.trim(),
-    target,
-    ssh,
-  };
-}
-
-async function deployLocal() {
-  const mode = currentMode();
-  if (!mode.deployable) return toast(mode.note || "该接入方式暂不支持一键部署", true);
-  const params = deployParams("local");
-  if (!params) return;
-  const methodText = S.method === "source" ? "源码构建（本机下载并编译）" : `官方镜像 ${mode.image}`;
-  const ok = await askConfirm(
-    `将用 Docker 在本机启动 ${mode.title}：\n\n方式：${methodText}\n端口：${params.port}\n内存上限：${params.memory || "不限制"}\n\n继续吗？`,
-    { title: "部署到本机 Docker", okText: "开始部署" },
-  );
-  if (!ok) return;
-  start("deploy", params);
-}
-
-function openSshModal(purpose = "deploy") {
-  S.sshPurpose = purpose;
-  if (purpose === "deploy") {
-    const mode = currentMode();
-    if (!mode.deployable) return toast(mode.note || "该接入方式暂不支持一键部署", true);
-  }
-  $("#ssh-confirm").textContent = purpose === "patch" ? "连接并制作" : "连接并部署";
-  $("#ssh-hint").textContent = purpose === "patch"
+function openSshModal(purpose = "patch") {
+  $("#ssh-confirm").textContent = "连接并制作";
+  $("#ssh-hint").textContent = S.data.paramiko
     ? "需要服务器已安装 Docker，并可以用 SSH 登录。官方固件会临时上传到服务器。"
-    : (S.data.paramiko
-      ? "需要服务器已安装 Docker，并且可以用 SSH 登录。"
-      : "本机缺少 paramiko，远程部署前需要安装（引导器会自动处理）。");
+    : "本机缺少 paramiko，远程制作前需要安装（引导器会自动处理）。";
+
+  const last = S.settings.last_ssh || {};
+  if (last.host && !$("#ssh-host").value) $("#ssh-host").value = last.host;
+  if (last.port && !$("#ssh-port").value) $("#ssh-port").value = last.port;
+  if (last.user && !$("#ssh-user").value) $("#ssh-user").value = last.user;
   $("#ssh-modal").classList.remove("hidden");
 }
 
@@ -740,20 +838,12 @@ function confirmRemoteDeploy() {
   if (!useKey && !ssh.password) return toast("请填写 SSH 密码", true);
   if (useKey && !ssh.key_path) return toast("请选择 SSH 私钥", true);
 
-  if (S.sshPurpose === "patch") {
-    const image = $("#image-path").value.trim();
-    if (!image) return toast("请先选择官方固件", true);
-    S.ssh = ssh;
-    closeSshModal();
-    start("patch", { image, model: S.model, target: "remote", ssh });
-    return;
-  }
-
-  const params = deployParams("remote", ssh);
-  if (!params) return;
+  const image = $("#image-path").value.trim();
+  if (!image) return toast("请先选择官方固件", true);
   S.ssh = ssh;
+  S.settings.last_ssh = { host: ssh.host, port: ssh.port, user: ssh.user };
   closeSshModal();
-  start("deploy", params);
+  start("patch", { image, model: S.model, target: "remote", ssh });
 }
 
 /* ---------------- 状态 ---------------- */
@@ -820,9 +910,39 @@ function handleDone(event) {
     saveSettings();
   } else if (action === "identify") {
     toast(`设备识别成功：${result}`);
-  } else if (action === "deploy" && result) {
-    toast(`部署完成：${result}`);
-    checkStatus();
+  } else if (action === "hm_deploy" || action === "hm_status") {
+    const info = parseJson(result);
+    if (action === "hm_deploy" && info.url) {
+      $("#hm-url").value = info.url;
+      connectHomeMate();
+    }
+    const state = info.state || (info.container ? "已创建" : "未知");
+    $("#hm-deploy-hint").textContent =
+      `容器：${state}｜控制台：${info.url || "-"}｜${info.reachable ? "控制台可访问" : "控制台暂不可访问（稍等再点连接）"}`;
+  } else if (action === "xp_logs") {
+    const info = parseJson(result);
+    const text = (info.text || "").trim() || "（没有日志）";
+    log(`XiaoAI-Plus 日志：\n${text}`);
+    toast("日志已输出到下方操作控制台");
+  } else if (
+    ["xp_status", "xp_read", "xp_save", "xp_install", "xp_offline", "xp_start", "xp_stop", "xp_restart", "xp_autostart"].includes(action)
+  ) {
+    const info = parseJson(result);
+    if (info.values) renderXpFields(info.values);
+    if (info.wake_word) $("#xp-wake-word").value = info.wake_word;
+    if (info.installed !== undefined || info.running !== undefined) applyXpStatus(info);
+    const messages = {
+      xp_status: "状态已刷新",
+      xp_read: "已读取音箱配置",
+      xp_save: "配置已保存并重启",
+      xp_install: "安装完成",
+      xp_offline: "离线安装完成",
+      xp_start: "已启动",
+      xp_stop: "已停止",
+      xp_restart: "已重启",
+      xp_autostart: "已设置开机自启",
+    };
+    toast(messages[action] || "完成");
   } else if (action === "install_driver") {
     toast("驱动安装程序已启动，请按提示完成安装");
   }

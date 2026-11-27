@@ -47,3 +47,6 @@ __pycache__
 .mi.json
 xiaozhi.json
 open-xiaoai.node
+
+# KWS model weights are downloaded separately and not redistributed
+packages/flash-gui-py/assets/

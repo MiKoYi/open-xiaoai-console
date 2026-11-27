@@ -10,6 +10,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -75,6 +76,51 @@ class WebServerTests(unittest.TestCase):
         status, data = self.post_json("/api/start", {"action": "nope"})
         self.assertEqual(status, 409)
         self.assertFalse(data["ok"])
+
+    def test_model_action_returns_config_path(self) -> None:
+        values = {"api_key": "k", "base_url": "https://x/v1", "model": "m", "system_prompt": "hi"}
+        with mock.patch.object(
+            web_server.dcore,
+            "save_model_config",
+            return_value={"path": "/opt/open-xiaoai/migpt/config.ts", "container": "c", "restarted": True},
+        ):
+            result = json.loads(
+                self.hub._do_model({"mode": "migpt", "target": "local", "values": values})
+            )
+        self.assertEqual(result["path"], "/opt/open-xiaoai/migpt/config.ts")
+        self.assertTrue(result["restarted"])
+
+    def test_model_restart_action(self) -> None:
+        with mock.patch.object(
+            web_server.dcore,
+            "restart_container",
+            return_value={"container": "open-xiaoai-migpt", "restarted": True},
+        ):
+            result = json.loads(self.hub._do_model_restart({"mode": "migpt", "target": "local"}))
+        self.assertTrue(result["restarted"])
+
+    def test_xp_status_action(self) -> None:
+        with mock.patch.object(
+            web_server.devcore,
+            "xp_status",
+            return_value={"installed": True, "running": True, "values": {}},
+        ):
+            result = json.loads(self.hub._do_xp_status({"ssh": {"host": "192.168.31.201"}}))
+        self.assertTrue(result["installed"])
+        self.assertTrue(result["running"])
+
+    def test_hm_status_action(self) -> None:
+        with (
+            mock.patch.object(
+                web_server.devcore,
+                "hm_status",
+                return_value={"state": "running", "running": True, "logs": "", "url": "http://1.2.3.4:8930"},
+            ),
+            mock.patch.object(web_server.devcore, "hm_check", return_value=True),
+        ):
+            result = json.loads(self.hub._do_hm_status({"ssh": {"host": "1.2.3.4"}}))
+        self.assertEqual(result["state"], "running")
+        self.assertTrue(result["reachable"])
 
     def test_busy_action_rejected(self) -> None:
         self.hub.busy = True

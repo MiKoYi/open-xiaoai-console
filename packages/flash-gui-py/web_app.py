@@ -36,6 +36,16 @@ def wait_browser(url: str) -> None:
         pass
 
 
+def set_taskbar_identity() -> None:
+    """让任务栏显示控制台自己的图标，而不是 python.exe 的图标。"""
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OpenXiaoAI.Console")
+    except Exception:  # noqa: BLE001 - 设置失败不影响使用
+        pass
+
+
 def center_position(width: int, height: int) -> tuple[int | None, int | None]:
     if os.name != "nt":
         return None, None
@@ -176,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--debug", action="store_true", help="打开 pywebview 调试")
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
+    set_taskbar_identity()
     httpd, _hub = serve_background(0)
     port = httpd.server_address[1]
     url = f"http://127.0.0.1:{port}/"

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Open-XiaoAI 控制台</title>
 <link rel="icon" href="/icon.ico">
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20261127">
 </head>
 <body>
 <div class="app">
@@ -18,6 +18,7 @@
       <button class="nav-item active" data-view="setup"><span class="nav-icon">⚙</span>初始化</button>
       <button class="nav-item locked" data-view="flash"><span class="nav-icon">◈</span>刷机</button>
       <button class="nav-item locked" data-view="deploy"><span class="nav-icon">◎</span>部署</button>
+      <button class="nav-item locked" data-view="config"><span class="nav-icon">✎</span>配置</button>
     </nav>
     <div class="sidebar-foot">
       <a id="link-github" class="side-link" target="_blank" rel="noreferrer">项目文档 ↗</a>
@@ -80,47 +81,144 @@
     <section id="view-deploy" class="view hidden">
       <header class="page-head">
         <h1>部署</h1>
-        <p>把服务端部署到本机 Docker 或远程服务器，音箱通过 Client 连接它。</p>
+        <p>部署 Home Mate（小瑞）核心，或给音箱安装 XiaoAI-Plus（豆包实时语音）。</p>
       </header>
 
-      <div class="deploy">
-        <div class="modes" id="mode-list"></div>
-        <section class="card detail">
-          <div class="detail-head">
-            <h2 id="mode-title">选择接入方式</h2>
-            <a id="mode-doc" class="link" target="_blank" rel="noreferrer">查看文档</a>
+      <div class="tabs" id="deploy-tabs">
+        <button class="tab active" data-tab="hm">Home Mate</button>
+        <button class="tab" data-tab="xp">XiaoAI-Plus</button>
+      </div>
+
+      <div id="deploy-warning" class="notice warn hidden"></div>
+
+      <div class="tab-panel" id="tab-hm">
+        <div class="notice">
+          Home Mate 支持：小爱音箱 Pro（LX06）、Echo Dot 2、Android 网关；<b>不支持 OH2P</b>（OH2P 请用 XiaoAI-Plus）。
+        </div>
+        <section class="card">
+          <div class="card-head">管理界面</div>
+          <div class="row">
+            <button class="btn primary" id="btn-hm-connect">连接</button>
+            <button class="btn" id="btn-hm-open">新窗口打开</button>
           </div>
-          <p class="tagline" id="mode-tagline"></p>
-          <div class="note hidden" id="mode-note"></div>
-          <div class="fields" id="fields"></div>
+          <div class="hint" id="hm-hint">管理界面地址在「配置 → Home Mate」填写；连接后会把 Home Mate 自带的 Vue 3 控制台嵌到下方。</div>
+          <iframe id="hm-frame" class="frame" src="about:blank"></iframe>
+        </section>
 
-          <details class="advanced" id="advanced">
-            <summary>高级选项（部署方式 / 内存 / 下载源）</summary>
-            <div class="options">
-              <div class="opt">
-                <label>部署方式</label>
-                <div class="seg small" id="method-seg"></div>
-                <div class="hint" id="method-hint"></div>
-              </div>
-              <div class="opt">
-                <label>内存上限（同时限制 Node 堆）</label>
-                <input id="memory" placeholder="如 256m，留空不限">
-              </div>
-              <div class="opt">
-                <label>源码下载源</label>
-                <select id="mirror"></select>
-              </div>
-              <div class="opt">
-                <label>自定义前缀</label>
-                <input id="mirror-prefix" placeholder="https://ghfast.top/">
-              </div>
-            </div>
-          </details>
+        <section class="card">
+          <div class="card-head">部署 / 更新核心（Docker over SSH）</div>
+          <div class="row">
+            <button class="btn primary" id="btn-hm-deploy">部署 / 更新核心</button>
+            <button class="btn" id="btn-hm-status">检查容器状态</button>
+          </div>
+          <div class="hint" id="hm-deploy-hint">SSH 参数在「配置 → Home Mate」里设置；镜像：ghcr.io/yes999zc/home-mate:latest（主机需要能访问 ghcr.io）。</div>
+        </section>
+      </div>
 
-          <div class="row end">
-            <label class="port">端口 <input id="port" value="4399" inputmode="numeric"></label>
-            <button class="btn primary" id="btn-deploy-local">部署到本机</button>
-            <button class="btn" id="btn-deploy-remote">部署到远程</button>
+      <div class="tab-panel hidden" id="tab-xp">
+        <div class="notice">
+          XiaoAI-Plus 仅支持 Xiaomi 智能音箱 Pro（<b>OH2P</b>）；LX06、Echo Dot 等其它机型请用 Home Mate。
+        </div>
+        <section class="card">
+          <div class="card-head">安装 / 更新（连接参数在「配置 → XiaoAI-Plus」）</div>
+          <div class="row">
+            <button class="btn primary" id="btn-xp-install">安装 / 更新</button>
+            <button class="btn" id="btn-xp-autostart">设置开机自启</button>
+            <button class="btn" id="btn-xp-logs">查看日志</button>
+          </div>
+          <div class="row">
+            <input id="xp-archive" placeholder="离线安装包 oh2p.tar.gz（留空则本机自动下载）">
+            <button class="btn" data-pick="archive">浏览…</button>
+            <button class="btn" id="btn-xp-offline">离线安装 / 更新</button>
+          </div>
+          <div class="hint" id="xp-offline-hint">
+            离线包用
+            <a class="link" href="https://github.com/rolazd/xiaoai-doubao/releases/download/v0.1.0/xiaoai-doubao-oh2p-v0.1.0.tar.gz" target="_blank" rel="noreferrer">xiaoai-doubao-oh2p-v0.1.0.tar.gz</a>；
+            控制台会自动补齐 KWS 模型、词表和 CA，再经 SSH 上传安装，音箱不需要外网。
+          </div>
+          <div class="hint">「安装 / 更新」由控制台下载 xiaoai-doubao v0.1.0 并补齐模型后上传；装完到「配置 → XiaoAI-Plus」填 API Key 和唤醒词。</div>
+        </section>
+      </div>
+
+    </section>
+
+    <section id="view-config" class="view hidden">
+      <header class="page-head">
+        <h1>配置</h1>
+        <p>分别配置 Home Mate 与 XiaoAI-Plus 的连接和运行参数；部署页只负责安装 / 更新。</p>
+      </header>
+
+      <div class="tabs" id="config-tabs">
+        <button class="tab active" data-ctab="hm">Home Mate</button>
+        <button class="tab" data-ctab="xp">XiaoAI-Plus</button>
+      </div>
+
+      <div class="tab-panel" id="ctab-hm">
+        <section class="card">
+          <div class="card-head">SSH 部署参数</div>
+          <div class="form-grid">
+            <label class="wide">管理界面地址<input id="hm-url" placeholder="http://192.168.1.207:8930"></label>
+            <label>主机地址<input id="hm-host" placeholder="192.168.1.207"></label>
+            <label>SSH 端口<input id="hm-port" value="22" inputmode="numeric"></label>
+            <label>用户名<input id="hm-user" value="root"></label>
+            <label>密码<input id="hm-pass" type="password"></label>
+            <label>数据目录<input id="hm-data" value="/opt/home-mate/data"></label>
+            <label>节点名<input id="hm-node" value="nas-core-1"></label>
+            <label class="wide">
+              <span class="check"><input type="checkbox" id="hm-sudo" checked> 用 sudo 执行 Docker</span>
+            </label>
+            <label class="wide" id="hm-sudo-row">sudo 密码<input id="hm-sudo-pass" type="password" placeholder="没有配置免密 sudo 时填写"></label>
+          </div>
+          <div class="hint">
+            「部署 → Home Mate」的部署 / 连接 / 状态按钮都使用这里的参数。
+            Home Mate 的 LLM / ASR / TTS 都走 API Key，填在它自带控制台的「服务」页。
+          </div>
+          <div class="row">
+            <button class="btn" id="btn-hm-services">服务 / API Key</button>
+            <button class="btn" id="btn-hm-interaction">唤醒与交互</button>
+            <button class="btn" id="btn-hm-devices">设备与音频</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="tab-panel hidden" id="ctab-xp">
+        <section class="card">
+          <div class="card-head">连接音箱</div>
+          <div class="form-grid">
+            <label>音箱地址<input id="xp-host" placeholder="192.168.31.201"></label>
+            <label>SSH 端口<input id="xp-port" value="22" inputmode="numeric"></label>
+            <label>用户名<input id="xp-user" value="root"></label>
+            <label>密码<input id="xp-pass" type="password" placeholder="open-xiaoai"></label>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="btn-xp-status">连接 / 刷新状态</button>
+          </div>
+          <div class="hint" id="xp-hint">需要音箱已刷补丁固件并开启 SSH（root）。连接信息会记住（含密码，保存在本机 state.json）。</div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">豆包实时语音配置</div>
+          <div class="form-grid">
+            <label class="wide">唤醒词<input id="xp-wake-word" placeholder="豆包豆包"></label>
+          </div>
+          <div class="fields" id="xp-fields"></div>
+          <div class="row">
+            <button class="btn primary" id="btn-xp-save">保存并重启</button>
+            <button class="btn" id="btn-xp-start">启动</button>
+            <button class="btn" id="btn-xp-stop">停止</button>
+            <button class="btn" id="btn-xp-restart">重启</button>
+          </div>
+          <div class="hint" id="xp-config-hint">
+            API Key 从火山引擎「豆包语音」控制台获取；保存后写入 /data/xiaoai-plus/config.ini（0600），
+            唤醒词会编码成 keywords 并上传，重启后生效。
+          </div>
+          <div class="hint">
+            音色用豆包 App 同款 <b>Vivi 2.0</b>：<code>zh_female_vv_uranus_bigtts</code>；
+            也可以填小何 2.0（<code>zh_female_xiaohe_uranus_bigtts</code>）等 S2S 音色。
+          </div>
+          <div class="hint">
+            模型版本（model）是豆包端到端实时语音的版本号，默认 1.2.6.1；
+            不确定就保持默认，服务端不支持时启动会失败并写进日志。
           </div>
         </section>
       </div>
@@ -157,6 +255,10 @@
     <div class="statusline">
       <span id="status-text">准备就绪</span>
       <span id="busy" class="busy hidden">执行中…</span>
+    </div>
+    <div class="log-tools">
+      <button class="btn tiny" id="btn-copy-log">复制日志</button>
+      <button class="btn tiny" id="btn-clear-log">清空日志</button>
     </div>
     <pre class="log" id="log" aria-live="polite"></pre>
 
@@ -221,6 +323,6 @@
 </div>
 
 <div class="toast hidden" id="toast"></div>
-<script src="/app.js"></script>
+<script src="/app.js?v=20261127"></script>
 </body>
 </html>

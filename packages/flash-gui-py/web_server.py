@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import deploy_core as dcore
+import device_core as devcore
 import flash_core as core
 import patch_core as patcher
 import tooling
@@ -93,18 +94,31 @@ class Hub:
     # ---- 刷机 ----
 
     def _do_flash(self, params: dict) -> str:
-        core.start_flash_flow(
-            params["exe"], params["image"], params.get("model", "LX06"), self.notify
+        core.run_flash_action(
+            "flash",
+            params["exe"],
+            params["image"],
+            model=params.get("model", "LX06"),
+            notify=self.notify,
         )
         return ""
 
     def _do_restore(self, params: dict) -> str:
-        core.start_restore_flow(params["exe"], params.get("model", "LX06"), self.notify)
+        core.run_flash_action(
+            "restore",
+            params["exe"],
+            model=params.get("model", "LX06"),
+            notify=self.notify,
+        )
         return ""
 
     def _do_identify(self, params: dict) -> str:
-        device = core.test_device_flow(params["exe"], self.notify)
-        return device.version
+        return core.run_flash_action(
+            "identify",
+            params["exe"],
+            model=params.get("model", "LX06"),
+            notify=self.notify,
+        )
 
     def _do_download(self, params: dict) -> str:
         path = core.download_firmware(
@@ -153,6 +167,7 @@ class Hub:
         mirror = params.get("mirror", "auto")
         custom_prefix = params.get("mirror_prefix", "")
         image_prefix = params.get("image_prefix", "")
+        build_proxy = params.get("build_proxy", "")
         target = params.get("target", "local")
 
         if target == "remote":
@@ -167,6 +182,7 @@ class Hub:
                 mirror=mirror,
                 custom_prefix=custom_prefix,
                 image_prefix=image_prefix,
+                build_proxy=build_proxy,
                 notify=self.notify,
             )
             check_host = result.host
@@ -180,22 +196,140 @@ class Hub:
                 mirror=mirror,
                 custom_prefix=custom_prefix,
                 image_prefix=image_prefix,
+                build_proxy=build_proxy,
                 notify=self.notify,
             )
             check_host = "127.0.0.1"
 
-        self.save_state(
-            {
-                "service_host": check_host,
-                "service_port": result.port,
-                "service_display": result.url,
-                "last_mode": mode,
-                "port": result.port,
-                "method": method,
-                "memory": memory,
-            }
-        )
+        saved = {
+            "service_host": check_host,
+            "service_port": result.port,
+            "service_display": result.url,
+            "last_mode": mode,
+            "last_target": target,
+            "port": result.port,
+            "method": method,
+            "memory": memory,
+        }
+        if target == "remote":
+            ssh = dcore.SshConfig(**params.get("ssh", {}))
+            # 只记住连接信息，密码 / 私钥仍由用户每次输入
+            saved["last_ssh"] = {"host": ssh.host, "port": ssh.port, "user": ssh.user}
+        self.save_state(saved)
         return result.url
+
+    def _do_model(self, params: dict) -> str:
+        target = params.get("target", "local")
+        ssh = dcore.SshConfig(**params["ssh"]) if target == "remote" else None
+        result = dcore.save_model_config(
+            params["mode"],
+            params.get("values", {}),
+            target=target,
+            ssh=ssh,
+            restart=bool(params.get("restart", True)),
+            notify=self.notify,
+        )
+        return json.dumps(result, ensure_ascii=False)
+
+    def _do_model_restart(self, params: dict) -> str:
+        target = params.get("target", "local")
+        ssh = dcore.SshConfig(**params["ssh"]) if target == "remote" else None
+        result = dcore.restart_container(
+            params["mode"],
+            target=target,
+            ssh=ssh,
+            notify=self.notify,
+        )
+        return json.dumps(result, ensure_ascii=False)
+
+    # ---- XiaoAI-Plus / Home Mate ----
+
+    def _ssh_param(self, params: dict) -> dcore.SshConfig:
+        try:
+            return dcore.SshConfig(**params.get("ssh", {}))
+        except TypeError as exc:
+            raise core.FlashError(f"SSH 参数不完整：{exc}") from exc
+
+    def _do_xp_status(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        return json.dumps(devcore.xp_status(ssh, self.notify), ensure_ascii=False)
+
+    def _do_xp_read(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        return json.dumps(devcore.xp_read_config(ssh), ensure_ascii=False)
+
+    def _do_xp_save(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        devcore.xp_save_config(
+            ssh,
+            params.get("values", {}),
+            params.get("wake_word", ""),
+            self.notify,
+        )
+        if params.get("restart", True):
+            devcore.xp_control(ssh, "restart", self.notify)
+        return json.dumps(devcore.xp_status(ssh, self.notify), ensure_ascii=False)
+
+    def _do_xp_install(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        result = devcore.xp_install(ssh, self.notify)
+        result.update(devcore.xp_status(ssh, self.notify))
+        return json.dumps(result, ensure_ascii=False)
+
+    def _do_xp_offline(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        result = devcore.xp_offline_install(ssh, params.get("archive", ""), self.notify)
+        result.update(devcore.xp_status(ssh, self.notify))
+        return json.dumps(result, ensure_ascii=False)
+
+    def _do_xp_start(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        devcore.xp_control(ssh, "start", self.notify)
+        return json.dumps(devcore.xp_status(ssh, self.notify), ensure_ascii=False)
+
+    def _do_xp_stop(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        devcore.xp_control(ssh, "stop", self.notify)
+        return json.dumps(devcore.xp_status(ssh, self.notify), ensure_ascii=False)
+
+    def _do_xp_restart(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        devcore.xp_control(ssh, "restart", self.notify)
+        return json.dumps(devcore.xp_status(ssh, self.notify), ensure_ascii=False)
+
+    def _do_xp_autostart(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        result = devcore.xp_enable_autostart(ssh, self.notify)
+        result.update(devcore.xp_status(ssh, self.notify))
+        return json.dumps(result, ensure_ascii=False)
+
+    def _do_xp_logs(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        return json.dumps(devcore.xp_logs(ssh, int(params.get("lines", 120))), ensure_ascii=False)
+
+    def _do_hm_deploy(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        result = devcore.hm_deploy(
+            ssh,
+            data_dir=params.get("data_dir") or "/opt/home-mate/data",
+            node_id=params.get("node_id") or "nas-core-1",
+            use_sudo=bool(params.get("use_sudo", True)),
+            sudo_password=params.get("sudo_password", ""),
+            notify=self.notify,
+        )
+        result["reachable"] = devcore.hm_check(result["url"])
+        return json.dumps(result, ensure_ascii=False)
+
+    def _do_hm_status(self, params: dict) -> str:
+        ssh = self._ssh_param(params)
+        result = devcore.hm_status(
+            ssh,
+            use_sudo=bool(params.get("use_sudo", False)),
+            sudo_password=params.get("sudo_password", ""),
+            notify=self.notify,
+        )
+        result["reachable"] = devcore.hm_check(result["url"])
+        return json.dumps(result, ensure_ascii=False)
 
     def _do_detect(self, params: dict) -> str:
         return json.dumps(self.check_status(), ensure_ascii=False)
@@ -242,6 +376,11 @@ def pick_file(kind: str) -> str:
                     )
                 elif kind == "key":
                     path = filedialog.askopenfilename(title="选择 SSH 私钥")
+                elif kind == "archive":
+                    path = filedialog.askopenfilename(
+                        title="选择 XiaoAI-Plus 离线安装包（oh2p.tar.gz）",
+                        filetypes=[("tar.gz 安装包", "*.tar.gz"), ("所有文件", "*.*")],
+                    )
                 else:
                     path = filedialog.askopenfilename(
                         title="选择补丁固件（.squashfs）",
@@ -373,6 +512,22 @@ def bootstrap_payload(hub: Hub) -> dict:
         "tool_zip": tool_zip,
         "tool_error": tool_error,
         "paramiko": has_paramiko,
+        "xp_fields": [
+            {
+                "section": section,
+                "key": key,
+                "label": label,
+                "default": default,
+                "secret": secret,
+                "multiline": multiline,
+            }
+            for section, key, label, default, secret, multiline in devcore.XP_FIELDS
+        ],
+        "hm_defaults": {
+            "data_dir": "/opt/home-mate/data",
+            "node_id": "nas-core-1",
+            "port": devcore.HM_CONSOLE_PORT,
+        },
     }
 
 
@@ -408,7 +563,11 @@ def install_deps() -> dict:
     ]
     if sys.prefix == sys.base_prefix:
         args.append("--user")
-    args += ["-i", "https://pypi.tuna.tsinghua.edu.cn/simple", "pywebview", "paramiko"]
+    args += [
+        "-i", "https://pypi.tuna.tsinghua.edu.cn/simple",
+        "pywebview", "paramiko",
+        "sherpa-onnx", "pypinyin", "sentencepiece", "click",
+    ]
 
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     try:

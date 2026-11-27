@@ -6,11 +6,14 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
+import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,6 +23,8 @@ from urllib.request import Request, urlopen
 # ---------------- 常量 ----------------
 
 IMAGE_MAX_SIZE = 0x02800000  # 40MB，system 分区上限（见 packages/client-patch/src/squashfs.sh）
+# bootrom 只在上电后几秒内可见，轮询要尽量密，才抓得住这个窗口
+IDENTIFY_INTERVAL = 0.1
 TUTORIAL_URL = "https://github.com/idootop/open-xiaoai/blob/main/docs/flash.md"
 TOOL_URL = "https://www.mediafire.com/file/1m9x18q1klcj5ds/Amlogic_Flash_Tool_v6.0.0.zip/file"
 RELEASE_BASE = "https://github.com/idootop/open-xiaoai/releases/download"
@@ -207,6 +212,189 @@ def _to_text(value) -> str:
     return value
 
 
+# ---------------- 管理员权限 ----------------
+# update.exe 访问 USB 设备需要管理员权限，但控制台界面（WebView2）不支持以管理员运行：
+# 界面保持普通权限，刷机时用 ShellExecuteEx(runas) 单独拉起 flash_worker 子进程，
+# 子进程把日志和结果写成 JSONL 事件文件，父进程边读边显示。
+
+SEE_MASK_NOCLOSEPROCESS = 0x00000040
+SW_HIDE = 0
+ERROR_CANCELLED = 1223
+WAIT_OBJECT_0 = 0
+FLASH_WORKER = Path(__file__).with_name("flash_worker.py")
+
+
+class _ShellExecuteInfo(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.c_uint32),
+        ("fMask", ctypes.c_uint32),
+        ("hwnd", ctypes.c_void_p),
+        ("lpVerb", ctypes.c_wchar_p),
+        ("lpFile", ctypes.c_wchar_p),
+        ("lpParameters", ctypes.c_wchar_p),
+        ("lpDirectory", ctypes.c_wchar_p),
+        ("nShow", ctypes.c_int),
+        ("hInstApp", ctypes.c_void_p),
+        ("lpIDList", ctypes.c_void_p),
+        ("lpClass", ctypes.c_wchar_p),
+        ("hkeyClass", ctypes.c_void_p),
+        ("dwHotKey", ctypes.c_uint32),
+        ("hIcon", ctypes.c_void_p),
+        ("hProcess", ctypes.c_void_p),
+    ]
+
+
+def is_admin() -> bool:
+    if os.name != "nt":
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:  # noqa: BLE001 - 判断失败就按普通权限处理
+        return False
+
+
+def _start_elevated_worker(events: Path, action: str, update_exe: str, image_path: str, model: str, timeout: int) -> int:
+    if not FLASH_WORKER.is_file():
+        raise FlashError("缺少 flash_worker.py，无法以管理员权限运行刷机工具。")
+    parameters = subprocess.list2cmdline(
+        [
+            str(FLASH_WORKER),
+            "--action", action,
+            "--exe", str(update_exe),
+            "--events", str(events),
+            "--image", str(image_path or ""),
+            "--model", str(model),
+            "--timeout", str(int(timeout)),
+        ]
+    )
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(_ShellExecuteInfo)]
+    shell32.ShellExecuteExW.restype = ctypes.c_bool
+    info = _ShellExecuteInfo()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = SEE_MASK_NOCLOSEPROCESS
+    info.lpVerb = "runas"
+    info.lpFile = sys.executable
+    info.lpParameters = parameters
+    info.lpDirectory = str(Path(__file__).resolve().parent)
+    info.nShow = SW_HIDE
+    if not shell32.ShellExecuteExW(ctypes.byref(info)):
+        code = ctypes.get_last_error()
+        if code == ERROR_CANCELLED:
+            raise FlashError("刷机需要管理员权限：请在弹出的 UAC 窗口中点「是」，然后重试。")
+        raise FlashError(f"无法以管理员权限启动刷机进程（错误代码 {code}），请重试。")
+    return int(info.hProcess or 0)
+
+
+def _read_events(path: Path, seen: int) -> tuple[list[dict], int]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], seen
+    # 只处理完整的行，避免把正在写的一行当成两条事件
+    text = text[: text.rfind("\n") + 1]
+    lines = text.splitlines()
+    events: list[dict] = []
+    for line in lines[seen:]:
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    return events, len(lines)
+
+
+def _consume_events(events: list[dict], notify: Notify, version: str, error: str) -> tuple[str, str]:
+    for event in events:
+        kind = event.get("type")
+        if kind == "log":
+            _log(notify, str(event.get("text", "")), str(event.get("level") or "info"))
+        elif kind == "status":
+            _status(notify, str(event.get("text", "")))
+        elif kind == "result":
+            version = str(event.get("version", ""))
+        elif kind == "error":
+            error = str(event.get("text", ""))
+    return version, error
+
+
+def _pump_events(handle: int, events: Path, notify: Notify, wait_seconds: float) -> str:
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    kernel32.WaitForSingleObject.restype = ctypes.c_uint32
+    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    kernel32.GetExitCodeProcess.restype = ctypes.c_bool
+    kernel32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+
+    seen = 0
+    version = ""
+    error = ""
+    deadline = time.monotonic() + wait_seconds
+    try:
+        while True:
+            found, seen = _read_events(events, seen)
+            version, error = _consume_events(found, notify, version, error)
+            if kernel32.WaitForSingleObject(handle, 100) == WAIT_OBJECT_0:
+                break
+            if time.monotonic() > deadline:
+                try:
+                    kernel32.TerminateProcess(handle, 1)
+                except OSError:
+                    pass
+                raise FlashError("刷机进程长时间没有结束，已终止。请重试。")
+        time.sleep(0.1)  # 等子进程把最后几行日志写完
+        found, seen = _read_events(events, seen)
+        version, error = _consume_events(found, notify, version, error)
+        exit_code = ctypes.c_uint32()
+        kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+    finally:
+        kernel32.CloseHandle(handle)
+
+    if error:
+        raise FlashError(error)
+    if exit_code.value != 0:
+        raise FlashError(f"刷机进程异常退出（代码 {exit_code.value}），请重试。")
+    return version
+
+
+def _run_elevated(action: str, update_exe: str, image_path: str, model: str, notify: Notify, timeout: int) -> str:
+    with tempfile.TemporaryDirectory(prefix="open-xiaoai-flash-") as temp:
+        events = Path(temp) / "events.jsonl"
+        events.touch()
+        handle = _start_elevated_worker(events, action, update_exe, image_path, model, timeout)
+        return _pump_events(handle, events, notify, timeout + 600)
+
+
+def run_flash_action(
+    action: str,
+    update_exe: str,
+    image_path: str = "",
+    model: str = "LX06",
+    notify: Notify = None,
+    timeout: int = 180,
+    elevate: Optional[bool] = None,
+) -> str:
+    """执行刷机动作（flash / restore / identify），返回识别到的 bootrom 版本。
+
+    elevate=None 时按当前权限自动判断：Windows 上不是管理员就拉起提权子进程，
+    保证 update.exe 以管理员权限访问 USB 设备；已经是管理员则直接在本进程执行。
+    """
+    if elevate is None:
+        elevate = os.name == "nt" and not is_admin()
+    if elevate and os.name == "nt":
+        return _run_elevated(action, update_exe, image_path, model, notify, timeout)
+
+    if action == "flash":
+        start_flash_flow(update_exe, image_path, model, notify=notify, timeout=timeout)
+        return ""
+    if action == "restore":
+        start_restore_flow(update_exe, model, notify=notify, timeout=timeout)
+        return ""
+    if action == "identify":
+        return test_device_flow(update_exe, notify=notify, timeout=timeout).version
+    raise FlashError(f"未知的刷机操作：{action}")
+
+
 # ---------------- 等待设备 ----------------
 
 
@@ -214,6 +402,27 @@ def _to_text(value) -> str:
 class Device:
     version: str
     attempts: int
+
+
+# update.exe 的 USB 报错 → 直接给可操作的排查建议（避免只显示“仍在等待设备”）
+_USB_ERROR_HINTS = (
+    (
+        ("libusb0", "control_msg", "ioctl_identify_host"),
+        "USB 通信失败（update.exe 报 libusb0 / control_msg 错误）：音箱在识别时掉线，或 USB 驱动 / 接口不稳定。请依次排查：\n"
+        "  1. 在控制台开始识别后再重新给音箱上电，识别窗口只有几秒钟；\n"
+        "  2. 关闭其他刷机工具，确保只有一个程序在访问设备；\n"
+        "  3. 换主板后置的 USB 2.0 接口、换一根数据线再试；\n"
+        "  4. 设备管理器里「WorldCup Device」带黄色感叹号时，运行刷机工具里的驱动安装程序重装驱动。",
+    ),
+)
+
+
+def _usb_error_hint(output: str) -> str:
+    text = (output or "").lower()
+    for markers, hint in _USB_ERROR_HINTS:
+        if any(marker in text for marker in markers):
+            return hint
+    return ""
 
 
 def wait_for_device(
@@ -229,6 +438,7 @@ def wait_for_device(
     deadline = time.monotonic() + timeout
     last_hint = time.monotonic()
     attempt = 0
+    shown_hints: set[str] = set()
 
     while time.monotonic() < deadline:
         if cancel and cancel():
@@ -239,12 +449,17 @@ def wait_for_device(
         if match:
             return Device(match.group(1), attempt)
 
+        hint = _usb_error_hint(result.output)
+        if hint and hint not in shown_hints:
+            shown_hints.add(hint)
+            _log(notify, hint, "warn")
+
         now = time.monotonic()
         if now - last_hint >= 15:
             _log(notify, "仍在等待设备… 请确认：数据线支持传输、USB 驱动已安装、并且刚刚重新插上过电源。", "warn")
             last_hint = now
 
-        time.sleep(0.7)
+        time.sleep(IDENTIFY_INTERVAL)
 
     raise FlashError(
         f"等待超时（{timeout} 秒）：没有识别到音箱。请检查数据线是否支持数据传输、"

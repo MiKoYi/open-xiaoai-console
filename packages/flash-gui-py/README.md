@@ -48,6 +48,8 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 
 - 机型：小爱音箱 Pro（LX06）/ Xiaomi 智能音箱 Pro（OH2P）
 - 固件：官方 Release 下载 + SHA256 校验，或手动选择
+- 刷机 / 识别设备会请求一次管理员权限（UAC），`update.exe` 以管理员身份运行；控制台界面本身仍是普通权限
+- 识别设备时每 0.1 秒轮询一次，尽量抓住上电后几秒内的 bootrom 窗口
 - 固件下载自动尝试 ghproxy.net / gh-proxy.com / ghfast.top，失败回退 GitHub 直连；可在「部署 → 高级选项」更换下载源
 - 支持下载补丁固件、下载官方固件，以及用 Docker（本机或远程 SSH）把官方固件制作成补丁固件；没有 Docker 时提供 [手动教程](../../docs/patch.md)
 - 刷机工具：优先用内置的 `tools/`，也可以浏览选择
@@ -56,13 +58,24 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 
 ### 部署
 
-- 按 `examples/` 文档选择接入方式：小智 AI、MiGPT
-- 表单化配置：唤醒词、OTA/WebSocket 地址、API Key、模型、系统提示词
-- 部署到本机 Docker 或远程服务器（SSH，密码/私钥）
-- 源码构建：本机下载源码 → 打包上传 → 服务器解压构建（ARM / 小内存）
-- MiGPT 源码构建使用 `examples/migpt/Dockerfile.lean` 精简镜像；容器内存按「内存上限」设置，Node 堆自动设为约一半（256m → 128m）
-- 源码下载源：自动 / 直连 / ghfast.top / ghproxy.net / hub.gitmirror.com / 自定义
-- 容器内存上限、端口映射
+部署页分两个标签，并会按当前机型提示支持范围：
+
+- **Home Mate（小瑞）**：支持 LX06 / Echo Dot 2 / Android 网关，**不支持 OH2P**。通过 SSH 在 Docker 主机上部署 `ghcr.io/yes999zc/home-mate:latest`（host 网络、8930 控制台），也可以只填地址连接已运行的核心；Home Mate 自带的 Vue 3 控制台会直接嵌在页面里（被拒绝嵌入时可「新窗口打开」）。
+- **XiaoAI-Plus**：**仅支持 OH2P**。音箱端程序基于 **xiaoai-doubao v0.1.0**（`rolazd/xiaoai-doubao`），原生支持 API Key 鉴权、协议 `o2` / `v3`、守护进程和退出词；配置在「配置 → XiaoAI-Plus」。
+- 安装包用 `xiaoai-doubao-oh2p-v0.1.0.tar.gz`：控制台下载后自动补齐 KWS 模型、词表和 CA，再上传到音箱本地解压安装，**音箱不需要外网**；也可以自己选离线包。旧的 `app_id / access_token / secret_key` 已完全移除。
+
+### 配置
+
+左侧「配置」页分两个标签：
+
+- **Home Mate**：管理界面地址、Docker 部署的 SSH 参数（主机、端口、用户、密码、数据目录、节点名、sudo）。Home Mate 的 LLM / ASR / TTS 都走 API Key，填在它自带控制台的「服务」页。
+- **XiaoAI-Plus**：音箱 SSH 连接 + `config.ini` 表单：协议版本（`o2` / `v3`）、**API Key**、模型版本、音色、机器人名、系统提示词、说话风格、唤醒回应、唤醒灵敏度、唤醒自动增益、播放增益；另外可以设置 **唤醒词**（保存时用 sherpa-onnx 编码，写入 `wakeup.keywords_file`，并保留原有的退出词）。支持保存并重启、启动 / 停止 / 重启。
+
+部署页只保留安装 / 更新按钮、嵌入的 Home Mate 控制台、XiaoAI-Plus 日志（只保留底部操作控制台一个日志区）。
+
+连接信息（主机、端口、用户名、密码、sudo 密码、XiaoAI-Plus 配置）会自动保存在本机 `state.json`，下次打开自动填好；不想保存就把密码框清空再操作。控制台还自动兼容小爱音箱旧版 dropbear 的 `ssh-rsa` 主机密钥（新版 paramiko 默认禁用，否则会报「no acceptable host key」）。日志面板上方有「复制日志 / 清空日志」按钮。
+
+机型不匹配时页面顶部会显示黄色警告，执行部署/安装/保存前还会再次确认；旧版 MiGPT 部署与「模型」菜单已移除。
 
 ### 状态栏
 

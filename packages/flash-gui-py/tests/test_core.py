@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -18,6 +19,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import flash_core as core  # noqa: E402
+import flash_worker  # noqa: E402
+import patch_core  # noqa: E402
 
 
 def make_image(path: Path, magic: bytes = b"hsqs", size: int = 8 * 1024 * 1024) -> None:
@@ -156,6 +159,26 @@ class FakeToolCase(unittest.TestCase):
             core.wait_for_device(self.update_exe, timeout=2)
         self.assertIn("等待超时", str(ctx.exception))
 
+    def test_wait_for_device_reports_usb_error_once(self) -> None:
+        self.reset_calls()
+        os.environ["FAKE_MODE"] = "usb-error"
+        logs: list[str] = []
+
+        def notify(kind: str, text: str, level: str) -> None:
+            if kind == "log":
+                logs.append(text)
+
+        with self.assertRaises(core.FlashError):
+            core.wait_for_device(self.update_exe, timeout=2, notify=notify)
+
+        hints = [text for text in logs if "USB 通信失败" in text]
+        self.assertEqual(len(hints), 1)
+        self.assertIn("USB 2.0", hints[0])
+
+    def test_usb_error_hint_ignores_normal_misses(self) -> None:
+        self.assertEqual(core._usb_error_hint("AmlUsbIdentifyHost\ncan not find device"), "")
+        self.assertIn("USB 通信失败", core._usb_error_hint("libusb0-dll:err [control_msg] failed"))
+
     # ---------------- 3. 刷机流程 ----------------
 
     def test_flash_success(self) -> None:
@@ -228,6 +251,104 @@ class FakeToolCase(unittest.TestCase):
         with self.assertRaises(core.FlashError) as ctx:
             core.run_update(str(self.temp_dir / "missing.exe"), ["identify"])
         self.assertIn("找不到 update.exe", str(ctx.exception))
+
+
+class WorkerTests(unittest.TestCase):
+    """flash_worker 是提权子进程，通过 JSONL 事件文件和控制台通信，这里只测事件内容。"""
+
+    def setUp(self) -> None:
+        self.temp_dir = Path(tempfile.mkdtemp(prefix="xiaoi-worker-test-"))
+        fake_source = Path(__file__).resolve().parent / "fake_update.py"
+        self.update_exe = str(self.temp_dir / "update.py")
+        shutil.copyfile(fake_source, self.update_exe)
+        self.events = self.temp_dir / "events.jsonl"
+        self._env_patch = mock.patch.dict(os.environ, {"FAKE_IDENTIFY_AFTER": "1"}, clear=False)
+        self._env_patch.start()
+
+    def tearDown(self) -> None:
+        self._env_patch.stop()
+        os.environ.pop("FAKE_MODE", None)
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def run_worker(self, *args: str) -> tuple[int, list[dict]]:
+        code = flash_worker.main(["--exe", self.update_exe, "--events", str(self.events), *args])
+        lines = self.events.read_text(encoding="utf-8").splitlines()
+        return code, [json.loads(line) for line in lines]
+
+    def test_identify_writes_result_and_logs(self) -> None:
+        code, events = self.run_worker("--action", "identify", "--timeout", "5")
+        self.assertEqual(code, 0)
+        self.assertEqual(events[-1]["type"], "result")
+        self.assertEqual(events[-1]["version"], "0-7-0-16-0-0-0-0")
+        self.assertTrue(any(event["type"] == "log" for event in events))
+        self.assertTrue(any(event["type"] == "status" for event in events))
+
+    def test_flash_error_is_written(self) -> None:
+        missing = self.temp_dir / "nope.squashfs"
+        code, events = self.run_worker("--action", "flash", "--image", str(missing))
+        self.assertEqual(code, 1)
+        self.assertEqual(events[-1]["type"], "error")
+        self.assertIn("固件文件不存在", events[-1]["text"])
+
+    def test_run_flash_action_inline(self) -> None:
+        version = core.run_flash_action(
+            "identify", self.update_exe, notify=None, timeout=5, elevate=False
+        )
+        self.assertEqual(version, "0-7-0-16-0-0-0-0")
+
+    def test_run_flash_action_rejects_unknown(self) -> None:
+        with self.assertRaises(core.FlashError):
+            core.run_flash_action("nope", self.update_exe, elevate=False)
+
+    def test_read_events_waits_for_complete_line(self) -> None:
+        path = self.temp_dir / "events.jsonl"
+        path.write_text('{"type": "log", "text": "半行', encoding="utf-8")
+        events, seen = core._read_events(path, 0)
+        self.assertEqual(events, [])
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write('"}\n')
+        events, seen = core._read_events(path, seen)
+        self.assertEqual(events[0]["text"], "半行")
+        self.assertEqual(core._read_events(path, seen)[0], [])
+
+    def test_consume_events_forwards_to_notify(self) -> None:
+        logs: list[tuple[str, str, str]] = []
+
+        def notify(kind: str, text: str, level: str = "") -> None:
+            logs.append((kind, text, level))
+
+        version, error = core._consume_events(
+            [
+                {"type": "log", "text": "hi", "level": "warn"},
+                {"type": "status", "text": "忙"},
+                {"type": "result", "version": "1"},
+            ],
+            notify,
+            "",
+            "",
+        )
+        self.assertEqual((version, error), ("1", ""))
+        self.assertEqual(logs, [("log", "hi", "warn"), ("status", "忙", "")])
+
+
+class PatchNamingTests(unittest.TestCase):
+    def test_output_version_uses_input_version(self) -> None:
+        source = Path("/tmp/OH2P_1.60.2.squashfs")
+        self.assertEqual(patch_core._output_version(source, "OH2P"), "1.60.2")
+        self.assertTrue(
+            str(patch_core._output_path("OH2P", "1.60.2")).replace("\\", "/").endswith(
+                "firmware/OH2P_1.60.2_patched.squashfs"
+            )
+        )
+
+    def test_output_version_falls_back_to_registry(self) -> None:
+        self.assertEqual(patch_core._output_version(Path("/tmp/official.squashfs"), "OH2P"), "1.58.6")
+
+    def test_remote_arch_detection(self) -> None:
+        with mock.patch.object(patch_core.dcore, "_ssh_run", return_value=(0, "aarch64\n")):
+            self.assertEqual(patch_core._remote_arch(object()), "aarch64")
+        with mock.patch.object(patch_core.dcore, "_ssh_run", return_value=(1, "")):
+            self.assertEqual(patch_core._remote_arch(object()), "")
 
 
 if __name__ == "__main__":

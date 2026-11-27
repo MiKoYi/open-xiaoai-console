@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tarfile
 import tempfile
 from pathlib import Path
@@ -33,9 +34,15 @@ def _docker_path(path: Path) -> str:
     return str(path).replace("\\", "/")
 
 
-def _output_path(model: str) -> Path:
+def _output_version(image: Path, model: str) -> str:
+    """输出文件名沿用输入固件的版本号（不再写死控制台内置的版本）。"""
+    match = re.search(r"(\d+\.\d+\.\d+)", image.name)
+    return match.group(1) if match else core.get_model_info(model).version
+
+
+def _output_path(model: str, version: str | None = None) -> Path:
     info = core.get_model_info(model)
-    return ROOT / "firmware" / f"{info.model}_{info.version}_patched.squashfs"
+    return ROOT / "firmware" / f"{info.model}_{version or info.version}_patched.squashfs"
 
 
 def _check_input(image: Path, model: str, notify) -> None:
@@ -101,12 +108,32 @@ def _patch_local(image: Path, model: str, out: Path, notify) -> None:
         raise PatchError("Docker 执行完成，但没有生成补丁固件，请查看日志。")
 
 
+def _remote_arch(client) -> str:
+    code, output = dcore._ssh_run(client, "uname -m", quiet=True)
+    if code != 0:
+        return ""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
 def _patch_remote(image: Path, model: str, out: Path, ssh, notify) -> None:
     client = dcore._ssh_connect(ssh)
     try:
         code, output = dcore._ssh_run(client, "docker info --format '{{.ServerVersion}}'", notify)
         if code != 0:
             raise PatchError("远程服务器 Docker 不可用，请确认已安装并启动 Docker。")
+
+        arch = _remote_arch(client)
+        if arch:
+            _log(notify, f"服务器架构：{arch}")
+            if arch.lower() in ("aarch64", "arm64", "armv7l", "armv8l"):
+                _log(
+                    notify,
+                    "⚠️ 补丁镜像是 linux/amd64，ARM 服务器需要 QEMU 模拟（会慢一些）。"
+                    "如果报 exec format error，先在服务器执行：\n"
+                    "  docker run --privileged --rm tonistiigi/binfmt --install amd64",
+                    "warn",
+                )
 
         remote_dir = f"{ssh.home}/open-xiaoai/patch"
         dcore._ssh_run(client, f"mkdir -p '{remote_dir}/in' '{remote_dir}/out'", notify)
@@ -118,11 +145,7 @@ def _patch_remote(image: Path, model: str, out: Path, ssh, notify) -> None:
                 tar.add(image, arcname=f"in/{image.name}")
                 tar.add(PATCHES_DIR, arcname="patches")
                 tar.add(PATCH_SCRIPT, arcname="patch.sh")
-            sftp = client.open_sftp()
-            try:
-                sftp.put(str(archive), f"{remote_dir}/patch.tar.gz")
-            finally:
-                sftp.close()
+            dcore._upload_file(client, archive, f"{remote_dir}/patch.tar.gz", notify)
 
         code, output = dcore._ssh_run(client, f"cd '{remote_dir}' && tar -xzf patch.tar.gz", notify)
         if code != 0:
@@ -137,14 +160,22 @@ def _patch_remote(image: Path, model: str, out: Path, ssh, notify) -> None:
         )
         code, output = dcore._ssh_run(client, command, notify)
         if code != 0:
+            lowered = output.lower()
+            if "exec format error" in lowered:
+                raise PatchError(
+                    "服务器是 ARM，补丁镜像（linux/amd64）需要 QEMU 模拟。先在服务器执行：\n"
+                    "  docker run --privileged --rm tonistiigi/binfmt --install amd64\n"
+                    "然后重试；不想用模拟就在服务器上装 squashfs-tools 原生打补丁。"
+                )
+            if "unauthorized" in lowered or "denied" in lowered or "no such host" in lowered:
+                raise PatchError(
+                    "服务器拉取补丁镜像失败（网络 / 未登录 Docker Hub）：\n" + _tail(output)
+                    + "\n可以给服务器配置 Docker 镜像加速或代理后重试。"
+                )
             raise PatchError("远程 Docker 制作补丁固件失败：\n" + _tail(output))
 
         _log(notify, "正在下载生成的补丁固件…")
-        sftp = client.open_sftp()
-        try:
-            sftp.get(f"{remote_dir}/out/{out.name}", str(out))
-        finally:
-            sftp.close()
+        dcore._download_file(client, f"{remote_dir}/out/{out.name}", out, notify)
         if not out.is_file():
             raise PatchError("远程制作完成，但下载补丁固件失败。")
     finally:
@@ -169,7 +200,7 @@ def patch_official(
         raise PatchError("当前选择的是补丁固件，请选择官方固件（文件名不含 _patched）再制作。")
     _check_input(source, model, notify)
 
-    out = _output_path(model)
+    out = _output_path(model, _output_version(source, model))
     out.parent.mkdir(parents=True, exist_ok=True)
 
     if target == "remote":
