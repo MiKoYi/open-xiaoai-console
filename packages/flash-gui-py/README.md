@@ -11,6 +11,8 @@ paramiko 和刷机工具在控制台左侧「初始化」菜单里安装，不�
 
 ![部署页](./docs/screenshot-deploy.png)
 
+![配置页](./docs/screenshot-config.png)
+
 ## 一键启动
 
 双击 **`启动控制台.cmd`**：

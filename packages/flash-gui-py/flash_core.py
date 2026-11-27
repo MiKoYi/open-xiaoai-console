@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -77,10 +78,10 @@ MODELS = {
     "OH2P": ModelInfo(
         model="OH2P",
         name="Xiaomi 智能音箱 Pro（OH2P）",
-        version="1.58.6",
-        filename="OH2P_1.58.6_patched.squashfs",
-        url=f"{RELEASE_BASE}/OH2P_1.58.6/OH2P_1.58.6_patched.squashfs",
-        sha256="1ff342defa0dabe552d69ebeb4c20e0321d2782437f9eb30bc0f6e10de328aa4",
+        version="1.60.2",
+        filename="OH2P_1.60.2_patched.squashfs",
+        url=f"{RELEASE_BASE}/OH2P_1.60.2/OH2P_1.60.2_patched.squashfs",
+        sha256="b235f13be02aa27200f00a67a196570738f1ba984ca8a535a8ffdfbf0b50a9bd",
         connection="无需拆机，直接用 Type-C 数据线连接音箱底部接口",
     ),
 }
@@ -618,6 +619,16 @@ def download_firmware(
             return target
         _log(notify, "已有文件校验不通过，重新下载…", "warn")
         target.unlink()
+
+    bundled = Path(__file__).resolve().parent / "firmware" / filename
+    if bundled.is_file():
+        shutil.copyfile(bundled, target)
+        valid = test_firmware(str(target), model).ok if official else sha256_file(target) == info.sha256
+        if valid:
+            _log(notify, "已使用随控制台附带的本地固件。", "ok")
+            return target
+        target.unlink(missing_ok=True)
+        _log(notify, "随控制台附带的固件校验不通过，改为在线下载…", "warn")
 
     candidates = firmware_candidates(info, mirror, custom_prefix, kind)
     errors: list[str] = []

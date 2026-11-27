@@ -342,7 +342,7 @@ class PatchNamingTests(unittest.TestCase):
         )
 
     def test_output_version_falls_back_to_registry(self) -> None:
-        self.assertEqual(patch_core._output_version(Path("/tmp/official.squashfs"), "OH2P"), "1.58.6")
+        self.assertEqual(patch_core._output_version(Path("/tmp/official.squashfs"), "OH2P"), "1.60.2")
 
     def test_remote_arch_detection(self) -> None:
         with mock.patch.object(patch_core.dcore, "_ssh_run", return_value=(0, "aarch64\n")):

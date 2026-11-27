@@ -16,6 +16,8 @@
 
 ![部署页](packages/flash-gui-py/docs/screenshot-deploy.png)
 
+![配置页](packages/flash-gui-py/docs/screenshot-config.png)
+
 ## 功能
 
 - **刷机**：官方固件下载 + SHA256 校验、自动抓上电窗口、`bulkcmd` 重试、错误翻译、一键恢复原厂
@@ -46,7 +48,9 @@
 | 机型 | 固件版本 |
 |---|---|
 | 小爱音箱 Pro（LX06） | 1.94.13 |
-| Xiaomi 智能音箱 Pro（OH2P） | 1.58.6 |
+| Xiaomi 智能音箱 Pro（OH2P） | 1.60.2 |
+
+> OH2P 1.60.2 补丁固件暂未在上游发布，控制台会优先使用 `packages/flash-gui-py/firmware/OH2P_1.60.2_patched.squashfs` 本地文件；没有本地文件时请点「浏览」手动选择。
 
 其他型号请勿使用，刷错固件有变砖风险。
 
